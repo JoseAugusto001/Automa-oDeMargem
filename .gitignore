@@ -1,0 +1,9 @@
+credenciais.py
+.env
+__pycache__/
+*.pyc
+saida/
+venv/
+.venv/
+myvenv/
+env/
