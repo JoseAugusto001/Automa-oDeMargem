@@ -202,11 +202,10 @@ def processar_clientes(page: Page, clientes: Iterable[Cliente], caminho_saida: s
             def pagina_tem_cpf_invalido():
                 try:
                     loc = page.get_by_text(config.UI_TEXTO_CPF_INVALIDO, exact=False)\
-                    .or_(page.get_by_text(getattr(config, "UI_TEXTO_CPF_INVALIDO_ALT", "CPF informado não é válido"), exact=False))\
-                    .or_(page.get_by_text(re.compile(r"cpf.*inv[aá]lido|cpf.*n[aã]o.*v[aá]lido|o\s*cpf\s*informado\s*n[aã]o\s*[eé]\s*v[aá]lido", re.IGNORECASE)))
-
+                        .or_(page.get_by_text(getattr(config, "UI_TEXTO_CPF_INVALIDO_ALT", "O CPF informado não é válido"), exact=False))\
+                        .or_(page.get_by_text(getattr(config, "UI_TEXTO_CPF_INVALIDO_ALT2", "CPF informado não é válido"), exact=False))\
+                        .or_(page.get_by_text(re.compile(r"cpf.*inv[aá]lido|cpf.*n[aã]o.*v[aá]lido|o?\s*cpf\s*informado\s*n[aã]o\s*[eé]?\s*v[aá]lido", re.IGNORECASE)))
                     return loc.first.is_visible()
-
                 except Exception:
                     return False
 
@@ -341,11 +340,12 @@ def processar_clientes(page: Page, clientes: Iterable[Cliente], caminho_saida: s
                     except Exception:
                         return False
                page.wait_for_function("() => true", timeout=200)
-               for _ in range(20):
+               page.wait_for_timeout(150)
+               for _ in range(18):
                    if resultado_apareceu():
                        nav_ocorreu = True
                        break
-                   page.wait_for_timeout(500)
+                   page.wait_for_timeout(250)
             except Exception:
                 pass
             if not nav_ocorreu:
@@ -359,24 +359,39 @@ def processar_clientes(page: Page, clientes: Iterable[Cliente], caminho_saida: s
             except Exception:
                 pass
             page.wait_for_timeout(config.PAUSA_APOS_CONSULTAR_MS)
+            def historico_tem_linha_sucesso_cpf():
+                try:
+                    row = page.locator(f"tr:has-text('{cpf_site}'):has-text('{config.UI_TEXTO_SUCESSO}')").or_(page.locator(f"[role='row']:has-text('{cpf_site}'):has-text('{config.UI_TEXTO_SUCESSO}')")).first
+                    return row.is_visible()
+                except Exception:
+                    return False
             if pagina_tem_restricao_emissao():
                 try:
                     msg_restricao = page.get_by_text(config.UI_TEXTO_RESTRICAO_EMISSAO, exact=False).first.inner_text()[:500] if page.get_by_text(config.UI_TEXTO_RESTRICAO_EMISSAO, exact=False).first.is_visible() else config.UI_TEXTO_RESTRICAO_EMISSAO
                 except Exception:
                     msg_restricao = config.UI_TEXTO_RESTRICAO_EMISSAO
                 escrever_linha_saida(caminho_saida, [cliente.nome, cliente.cpf, cliente.contato, cliente.email, "", "", "", "", "", "restricao_emissao", msg_restricao.replace("\n", " ").replace("\r", "")])
-                
-                pular = True
-            
-            if pagina_tem_cpf_invalido():
-                escrever_linha_saida(caminho_saida, [cliente.nome, cliente.cpf, cliente.contato, cliente.email, "", "", "", "", "", "cpf_invalido", mensagem_erro])
-                
-                pular = True
-            page.wait_for_timeout(400)
-            if pagina_tem_cpf_invalido():
-                escrever_linha_saida(caminho_saida, [cliente.nome, cliente.cpf, cliente.contato, cliente.email, "", "", "", "", "", "cpf_invalido", mensagem_erro])
-                
-                pular = True
+                voltar_para_consulta_limpa(page)
+                continue
+            if pagina_tem_cpf_invalido() and not historico_tem_linha_sucesso_cpf():
+                try:
+                    err_loc = page.get_by_text(config.UI_TEXTO_CPF_INVALIDO, exact=False).or_(page.get_by_text(getattr(config, "UI_TEXTO_CPF_INVALIDO_ALT2", "CPF informado não é válido"), exact=False)).first
+                    msg_cpf = err_loc.inner_text()[:300].replace("\n", " ").replace("\r", "") if err_loc.is_visible() else "CPF inválido"
+                except Exception:
+                    msg_cpf = "CPF inválido"
+                escrever_linha_saida(caminho_saida, [cliente.nome, cliente.cpf, cliente.contato, cliente.email, "", "", "", "", "", "cpf_invalido", msg_cpf])
+                voltar_para_consulta_limpa(page)
+                continue
+            page.wait_for_timeout(200)
+            if pagina_tem_cpf_invalido() and not historico_tem_linha_sucesso_cpf():
+                try:
+                    err_loc = page.get_by_text(config.UI_TEXTO_CPF_INVALIDO, exact=False).or_(page.get_by_text(getattr(config, "UI_TEXTO_CPF_INVALIDO_ALT2", "CPF informado não é válido"), exact=False)).first
+                    msg_cpf = err_loc.inner_text()[:300].replace("\n", " ").replace("\r", "") if err_loc.is_visible() else "CPF inválido"
+                except Exception:
+                    msg_cpf = "CPF inválido"
+                escrever_linha_saida(caminho_saida, [cliente.nome, cliente.cpf, cliente.contato, cliente.email, "", "", "", "", "", "cpf_invalido", msg_cpf])
+                voltar_para_consulta_limpa(page)
+                continue
             modal_autorizacao = page.get_by_text(config.UI_TEXTO_MODAL_AUTORIZACAO, exact=False).first
             try:
                 modal_visivel = modal_autorizacao.is_visible()
@@ -436,12 +451,12 @@ def processar_clientes(page: Page, clientes: Iterable[Cliente], caminho_saida: s
                 vinculo_visivel = False
             if vinculo_visivel:
                 escrever_linha_saida(caminho_saida, [cliente.nome, cliente.cpf, cliente.contato, cliente.email, "", "", "", "", "", "sem_vinculo", mensagem_erro])
-                
-                pular = True
+                voltar_para_consulta_limpa(page)
+                continue
             if status == "falha_modal_autorizacao":
                 escrever_linha_saida(caminho_saida, [cliente.nome, cliente.cpf, cliente.contato, cliente.email, "", "", "", "", "", status, mensagem_erro])
-                
-                pular = True
+                voltar_para_consulta_limpa(page)
+                continue
             try:
                 try:
                     page.wait_for_load_state("domcontentloaded", timeout=10000)
