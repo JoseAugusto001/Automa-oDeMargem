@@ -4,6 +4,8 @@ URL_HUB_PATTERN = "**/hub"
 URL_CLT_CONSULTAR_PATTERN = "**/clt/consultar"
 URL_TERMO_CONTAIN = "assina.bancoprata.com.br/credito-trabalhador/termo-autorizacao"
 URL_TERMO_CONTAIN_ALT = "credito-trabalhador/autorizar"
+# Domínios aceitos para link do termo (modal pode mostrar assina.bancoprata, pratadigital ou link.bancoapri)
+URL_TERMO_DOMAINS = ["assina.bancoprata.com.br", "pratadigital.com.br", "link.bancoapri.com.br"]
 
 # Viewport 
 VIEWPORT_LARGURA = 1920
@@ -64,6 +66,8 @@ UI_LABEL_NOME = "Nome"
 UI_LABEL_TELEFONE = "Telefone"
 UI_BOTAO_ENVIAR = "ENVIAR"
 UI_TEXTO_OBRIGADO = "Obrigado"
+UI_TEXTO_OBRIGADO_ALT = ["Obrigado!", "Enviado com sucesso", "Sucesso"]
+TIMEOUT_TERMO_OBRIGADO_MS = 25000
 UI_BOTAO_VOLTAR = "Voltar"
 UI_TEXTO_SEM_VINCULO = "não possui vínculos empregatícios ativos"
 UI_TEXTO_CPF_INVALIDO = "CPF inválido"
@@ -86,3 +90,5 @@ UI_TEXTO_ENTENDA_ENCARGOS = "Entenda os encargos"
 UI_TEXTO_TOTAL = "Total"
 UI_TEXTO_PARCELAS_X_RS = "x R$"
 UI_TEXTO_CPF_INVALIDO_ALT = "O CPF informado não é válido"
+UI_LABEL_TELEFONE_TERMO = "Número de telefone"
+UI_TEXTO_CHECKBOX_ACEITO = "Eu aceito os termos"

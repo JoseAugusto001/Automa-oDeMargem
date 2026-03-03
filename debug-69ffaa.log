@@ -1,0 +1,25 @@
+{"sessionId": "69ffaa", "timestamp": 1772561347529, "location": "robo_consulta_margem.py:termo_bloco", "message": "termo_entrada", "data": {"passo": "inicio"}, "hypothesisId": "H1"}
+{"sessionId": "69ffaa", "timestamp": 1772561347767, "location": "robo_consulta_margem.py:termo_esperar", "message": "termo_apos_esperar", "data": {}, "hypothesisId": "H1"}
+{"sessionId": "69ffaa", "timestamp": 1772561348187, "location": "robo_consulta_margem.py:termo_fallback", "message": "termo_fallback_inputs", "data": {"n": 7}, "hypothesisId": "H4"}
+{"sessionId": "69ffaa", "timestamp": 1772561348661, "location": "robo_consulta_margem.py:termo_fill", "message": "termo_preencheu_fallback", "data": {}, "hypothesisId": "H4"}
+{"sessionId": "69ffaa", "timestamp": 1772561400001, "location": "robo_consulta_margem.py:termo_except", "message": "termo_except", "data": {"passo": "esperar_obrigado", "tipo": "TimeoutError"}, "hypothesisId": "H5"}
+{"sessionId": "69ffaa", "timestamp": 1772561409155, "location": "robo_consulta_margem.py:termo_bloco", "message": "termo_entrada", "data": {"passo": "inicio"}, "hypothesisId": "H1"}
+{"sessionId": "69ffaa", "timestamp": 1772561409388, "location": "robo_consulta_margem.py:termo_esperar", "message": "termo_apos_esperar", "data": {}, "hypothesisId": "H1"}
+{"sessionId": "69ffaa", "timestamp": 1772561409812, "location": "robo_consulta_margem.py:termo_fallback", "message": "termo_fallback_inputs", "data": {"n": 7}, "hypothesisId": "H4"}
+{"sessionId": "69ffaa", "timestamp": 1772561410258, "location": "robo_consulta_margem.py:termo_fill", "message": "termo_preencheu_fallback", "data": {}, "hypothesisId": "H4"}
+{"sessionId": "69ffaa", "timestamp": 1772561454665, "location": "robo_consulta_margem.py:termo_except", "message": "termo_except", "data": {"passo": "esperar_obrigado", "tipo": "TargetClosedError"}, "hypothesisId": "H5"}
+{"sessionId": "69ffaa", "timestamp": 1772561663415, "location": "robo_consulta_margem.py:termo_bloco", "message": "termo_entrada", "data": {"passo": "inicio"}, "hypothesisId": "H1"}
+{"sessionId": "69ffaa", "timestamp": 1772561663731, "location": "robo_consulta_margem.py:termo_esperar", "message": "termo_apos_esperar", "data": {}, "hypothesisId": "H1"}
+{"sessionId": "69ffaa", "timestamp": 1772561664153, "location": "robo_consulta_margem.py:termo_fallback", "message": "termo_fallback_inputs", "data": {"n": 7}, "hypothesisId": "H4"}
+{"sessionId": "69ffaa", "timestamp": 1772561664599, "location": "robo_consulta_margem.py:termo_fill", "message": "termo_preencheu_fallback", "data": {}, "hypothesisId": "H4"}
+{"sessionId": "69ffaa", "timestamp": 1772561715932, "location": "robo_consulta_margem.py:termo_except", "message": "termo_except", "data": {"passo": "esperar_obrigado", "tipo": "TimeoutError"}, "hypothesisId": "H5"}
+{"sessionId": "69ffaa", "timestamp": 1772561725247, "location": "robo_consulta_margem.py:termo_bloco", "message": "termo_entrada", "data": {"passo": "inicio"}, "hypothesisId": "H1"}
+{"sessionId": "69ffaa", "timestamp": 1772561725511, "location": "robo_consulta_margem.py:termo_esperar", "message": "termo_apos_esperar", "data": {}, "hypothesisId": "H1"}
+{"sessionId": "69ffaa", "timestamp": 1772561725941, "location": "robo_consulta_margem.py:termo_fallback", "message": "termo_fallback_inputs", "data": {"n": 7}, "hypothesisId": "H4"}
+{"sessionId": "69ffaa", "timestamp": 1772561726418, "location": "robo_consulta_margem.py:termo_fill", "message": "termo_preencheu_fallback", "data": {}, "hypothesisId": "H4"}
+{"sessionId": "69ffaa", "timestamp": 1772561777770, "location": "robo_consulta_margem.py:termo_except", "message": "termo_except", "data": {"passo": "esperar_obrigado", "tipo": "TimeoutError"}, "hypothesisId": "H5"}
+{"sessionId": "69ffaa", "timestamp": 1772561787013, "location": "robo_consulta_margem.py:termo_bloco", "message": "termo_entrada", "data": {"passo": "inicio"}, "hypothesisId": "H1"}
+{"sessionId": "69ffaa", "timestamp": 1772561787280, "location": "robo_consulta_margem.py:termo_esperar", "message": "termo_apos_esperar", "data": {}, "hypothesisId": "H1"}
+{"sessionId": "69ffaa", "timestamp": 1772561787800, "location": "robo_consulta_margem.py:termo_fallback", "message": "termo_fallback_inputs", "data": {"n": 7}, "hypothesisId": "H4"}
+{"sessionId": "69ffaa", "timestamp": 1772561788285, "location": "robo_consulta_margem.py:termo_fill", "message": "termo_preencheu_fallback", "data": {}, "hypothesisId": "H4"}
+{"sessionId": "69ffaa", "timestamp": 1772561839665, "location": "robo_consulta_margem.py:termo_except", "message": "termo_except", "data": {"passo": "esperar_obrigado", "tipo": "TimeoutError"}, "hypothesisId": "H5"}

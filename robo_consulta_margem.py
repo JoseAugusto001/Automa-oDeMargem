@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import csv
+import json
 import os
 import re
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Iterable, List
+from urllib.parse import urlparse
 
 from playwright.sync_api import Page, sync_playwright  # type: ignore[import-untyped]
 
@@ -90,6 +92,88 @@ def cpf_com_mascara(cpf: str) -> str:
     return f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}"
 
 
+
+def extrair_link_termo_do_modal(page: Page) -> str | None:
+
+    dialog = (
+        page.locator("[role='dialog'], .modal, [class*='modal'], [data-testid*='modal']")
+        .filter(has_text=re.compile(re.escape(config.UI_TEXTO_MODAL_AUTORIZACAO), re.IGNORECASE))
+        .first
+    )
+    try:
+        dialog.wait_for(state="visible", timeout=8000)
+    except Exception:
+        try:
+            dialog = page.get_by_text(config.UI_TEXTO_MODAL_AUTORIZACAO, exact=False).first.locator("..").locator("..")
+            dialog.wait_for(state="visible", timeout=5000)
+        except Exception:
+            dialog = page.locator("body")
+    doms = getattr(config, "URL_TERMO_DOMAINS", ["assina.bancoprata.com.br"])
+    for dom in doms:
+        try:
+            a = dialog.locator(f"a[href*='{dom}']").first
+            if a.count() > 0:
+                href = (a.get_attribute("href") or "").strip()
+                if href.startswith("http"):
+                    return href
+        except Exception:
+            pass
+    try:
+        els = dialog.locator("input, textarea")
+        for i in range(min(els.count(), 40)):
+            el = els.nth(i)
+            try:
+                v = (el.input_value() or "").strip().split("\n")[0].strip()
+                if v.startswith("http") and any(d in v for d in doms):
+                    return v
+            except Exception:
+                pass
+    except Exception:
+        pass
+    try:
+        urls = dialog.evaluate(r"""
+             (root, doms) => {
+             if (!doms || !doms.length) return [];
+             const out = [];
+             const attrs = ["href","value","data-clipboard-text","data-url","data-link","data-href"];
+             var reByDom = doms.map(function(d) { return new RegExp("https?:\\/\\/[^\\s'\"]*" + d.replace(/\./g, "\\.").replace(/\//g, "\\/") + "[^\\s'\"]*", "ig"); });
+
+             root.querySelectorAll("*").forEach(function(el) {
+               attrs.forEach(function(a) {
+                var v = el.getAttribute && el.getAttribute(a);
+                if (v && typeof v === "string" && v.indexOf("http") === 0 && doms.some(function(d) { return v.indexOf(d) !== -1; })) out.push(v.trim());
+               });
+               if ("value" in el && typeof el.value === "string" && el.value.indexOf("http") === 0 && doms.some(function(d) { return el.value.indexOf(d) !== -1; })) out.push(el.value.trim());
+             });
+             var txt = (root.innerText || "");
+             reByDom.forEach(function(re) { (txt.match(re) || []).forEach(function(u) { out.push(u.trim()); }); });
+             return out.filter(function(x, i, arr) { return arr.indexOf(x) === i; }).slice(0, 15);
+             }
+         """, doms)
+        for u in (urls or []):
+            u = (u or "").strip().split("\n")[0].strip()
+            if u.startswith("http") and any(d in u for d in doms):
+                return u
+    except Exception:
+        pass
+    try:
+        for el in page.locator("input, textarea").all():
+            try:
+                v = (el.input_value() or "").strip().split("\n")[0].strip()
+                if v.startswith("http") and any(d in v for d in doms):
+                    return v
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return None
+
+
+def abrir_termo_em_nova_aba(page: Page, url_termo: str) -> Page:
+    termo = page.context.new_page()
+    termo.goto(url_termo, wait_until="domcontentloaded")
+    return termo
+
 def login_e_ir_para_consulta(page: Page) -> None:
     page.goto(config.URL_ADMIN_BASE, wait_until="domcontentloaded")
     campo_email = page.get_by_label(config.UI_LABEL_EMAIL).or_(page.locator("input[type='email']").first)
@@ -132,6 +216,9 @@ def processar_clientes(page: Page, clientes: Iterable[Cliente], caminho_saida: s
     timeout_ms = config.TIMEOUT_PROCESSAR_MS
     cpfs_ja_processados: set[str] = set()
     for idx, cliente in enumerate(clientes):
+        status = "nao_processado"
+        mensagem_erro = ""
+        valor_maximo_parcela = ""
         pular = False
         cpf_raw = cliente.cpf
         if not cpf_valido_11(cpf_raw):
@@ -392,58 +479,161 @@ def processar_clientes(page: Page, clientes: Iterable[Cliente], caminho_saida: s
                 escrever_linha_saida(caminho_saida, [cliente.nome, cliente.cpf, cliente.contato, cliente.email, "", "", "", "", "", "cpf_invalido", msg_cpf])
                 voltar_para_consulta_limpa(page)
                 continue
+            url_termo = None
             modal_autorizacao = page.get_by_text(config.UI_TEXTO_MODAL_AUTORIZACAO, exact=False).first
             try:
                 modal_visivel = modal_autorizacao.is_visible()
             except Exception:
                 modal_visivel = False
             if modal_visivel:
+                page.get_by_text(config.UI_TEXTO_MODAL_AUTORIZACAO, exact=False).first.wait_for(state="visible", timeout=8000)
+                url_termo = extrair_link_termo_do_modal(page)
+
+                if not url_termo:
+                     status = "falha_modal_autorizacao"
+                     mensagem_erro = "Não consegui extrair a URL do termo."
+                     escrever_linha_saida(
+                        caminho_saida,
+                        [cliente.nome, cliente.cpf, cliente.contato, cliente.email, "", "", "", "", "", "falha_modal_autorizacao", mensagem_erro]
+                     )
+                     voltar_para_consulta_limpa(page)
+                     continue
+                print("URL termo:", url_termo)
+
                 try:
-                    url_termo_alt = getattr(config, "URL_TERMO_CONTAIN_ALT", "credito-trabalhador/autorizar")
-                    link_termo = None
-                    for selector in [f'a[href*="{config.URL_TERMO_CONTAIN}"]', f'a[href*="{url_termo_alt}"]']:
+                    parsed = urlparse(url_termo)
+                    origin_termo = f"{parsed.scheme}://{parsed.netloc}"
+                    page.context.grant_permissions(["geolocation"], origin=origin_termo)
+                except Exception:
+                    try:
+                        page.context.grant_permissions(["geolocation"], origin="https://assina.bancoprata.com.br")
+                    except Exception:
+                        pass
+                aba_termo = abrir_termo_em_nova_aba(page, url_termo)
+                aba_termo.on("dialog", lambda d: d.accept())
+                aba_termo.wait_for_load_state("domcontentloaded")
+                passo_termo = "inicio"
+                try:
+                    if os.environ.get("ROBO_DEBUG"):
+                        print("Termo: aguardando formulário...")
+                    passo_termo = "esperar_campo"
+                    aba_termo.get_by_text("Termo de Autorização", exact=False).first.wait_for(state="visible", timeout=10000)
+                    aba_termo.locator("input").first.wait_for(state="visible", timeout=8000)
+                    aba_termo.wait_for_timeout(400)
+                    passo_termo = "preencher"
+                    if os.environ.get("ROBO_DEBUG"):
+                        print("Termo: preenchendo campos...")
+                    container_termo = aba_termo.get_by_text("Termo de Autorização", exact=False).first.locator("..").locator("..").locator("..")
+                    inputs_vis = container_termo.locator("input:not([type='hidden']):not([type='submit']):not([type='button'])").all()
+                    if len(inputs_vis) < 4:
                         try:
-                            link_termo = page.locator(selector).first.get_attribute("href")
-                            if link_termo:
-                                break
+                            alt = aba_termo.locator("#validation-login").locator("input:not([type='hidden']):not([type='submit']):not([type='button'])").all()
+                            if len(alt) >= 4:
+                                inputs_vis = alt
                         except Exception:
                             pass
-                    if link_termo:
-                        with page.context.expect_page(timeout=timeout_ms) as nova_aba_info:
-                            page.locator(f'a[href*="{config.URL_TERMO_CONTAIN}"]').or_(page.locator(f'a[href*="{url_termo_alt}"]')).first.click()
-                        aba_termo = nova_aba_info.value
-                        aba_termo.on("dialog", lambda d: d.accept())
-                        aba_termo.wait_for_load_state("domcontentloaded")
-                        aba_termo.get_by_label(config.UI_LABEL_CPF).or_(aba_termo.locator('input[placeholder*="CPF"], input[name="cpf"]').first).fill(cpf_site)
-                        aba_termo.get_by_label(config.UI_LABEL_NOME).or_(aba_termo.locator('input[placeholder*="Nome"], input[name="nome"]').first).fill(cliente.nome)
-                        aba_termo.get_by_label(config.UI_LABEL_EMAIL).or_(aba_termo.locator('input[type="email"]').first).fill(cliente.email)
-                        aba_termo.get_by_label("telefone").or_(aba_termo.get_by_label(config.UI_LABEL_TELEFONE)).or_(aba_termo.locator('input[name*="telefone"], input[placeholder*="telefone"]').first).fill(cliente.contato)
-                        for chk in aba_termo.get_by_role("checkbox").all():
+                    preencheu = False
+                    if len(inputs_vis) >= 4:
+                        inputs_vis[0].fill(cpf_site)
+                        inputs_vis[1].fill(cliente.nome)
+                        inputs_vis[2].fill(cliente.email)
+                        inputs_vis[3].fill(cliente.contato)
+                        preencheu = True
+                    if not preencheu:
+                        campo_cpf_termo = aba_termo.get_by_label(re.compile(r"CPF\s*\*?", re.IGNORECASE)).or_(aba_termo.locator('input[name="cpf"], input[placeholder*="CPF"], input[id*="cpf"]').first)
+                        campo_cpf_termo.wait_for(state="visible", timeout=10000)
+                        try:
+                            campo_cpf_termo.first.fill(cpf_site)
+                            try:
+                                campo_cpf_termo.first.evaluate("(el, val) => { el.value = val; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }", cpf_site)
+                            except Exception:
+                                pass
+                            campo_nome_termo = aba_termo.get_by_label(re.compile(r"Nome\s*\*?", re.IGNORECASE)).or_(aba_termo.locator('input[placeholder*="Nome"], input[name="nome"], input[id*="nome"]').first)
+                            campo_nome_termo.first.fill(cliente.nome)
+                            try:
+                                campo_nome_termo.first.evaluate("(el, val) => { el.value = val; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }", cliente.nome)
+                            except Exception:
+                                pass
+                            campo_email_termo = aba_termo.get_by_label(re.compile(r"E-mail\s*\*?", re.IGNORECASE)).or_(aba_termo.locator('input[type="email"], input[name*="email"], input[placeholder*="mail"]').first)
+                            campo_email_termo.first.fill(cliente.email)
+                            try:
+                                campo_email_termo.first.evaluate("(el, val) => { el.value = val; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }", cliente.email)
+                            except Exception:
+                                pass
+                            campo_tel_termo = aba_termo.get_by_label(re.compile(r"Número de telefone|telefone\s*\*?", re.IGNORECASE)).or_(aba_termo.locator('input[name*="telefone"], input[placeholder*="telefone"], input[placeholder*="Número"], input[id*="telefone"]').first)
+                            campo_tel_termo.first.fill(cliente.contato)
+                            try:
+                                campo_tel_termo.first.evaluate("(el, val) => { el.value = val; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }", cliente.contato)
+                            except Exception:
+                                pass
+                        except Exception:
+                            raise
+                    checkboxes = aba_termo.get_by_role("checkbox").all()
+                    for chk in checkboxes:
+                        try:
                             if not chk.is_checked():
                                 chk.check()
-                        aba_termo.get_by_role("button", name=config.UI_BOTAO_ENVIAR).click()
-                        aba_termo.wait_for_selector(f"text={config.UI_TEXTO_OBRIGADO}", timeout=timeout_ms)
-                        aba_termo.close()
-                        page.bring_to_front()
-                        page.get_by_role("button", name=config.UI_BOTAO_VOLTAR).first.wait_for(state="visible", timeout=5000)
-                        page.get_by_role("button", name=config.UI_BOTAO_VOLTAR).first.click()
-                        page.wait_for_timeout(800)
-                        page.get_by_label(config.UI_LABEL_CPF).or_(page.locator('input[name="cpf"], input[id*="cpf"]').first).wait_for(state="visible", timeout=5000)
-                        page.wait_for_timeout(400)
-                        page.get_by_label(config.UI_LABEL_CPF).or_(page.locator('input[name="cpf"], input[id*="cpf"]').first).fill(cpf_site)
-                        page.wait_for_timeout(400)
-                        page.locator(f"#{config.UI_ID_BOTAO_CONSULTAR_SALDO}").or_(page.get_by_role("button", name=config.UI_BOTAO_CONSULTAR_SALDO)).first.click()
-                        try:
-                            page.wait_for_load_state("domcontentloaded", timeout=config.TIMEOUT_PROCESSAR_MS)
                         except Exception:
                             pass
-                        page.wait_for_timeout(config.PAUSA_APOS_CONSULTAR_MS)
-                    else:
-                        status = "falha_modal_autorizacao"
-                except Exception as e:
-                    print(f"Erro no fluxo do termo: {e}")
-                    status = "falha_modal_autorizacao"
-
+                    if len(checkboxes) == 0:
+                        try:
+                            for texto in [getattr(config, "UI_TEXTO_CHECKBOX_ACEITO", "Eu aceito os termos"), "Declaro que não estou em aviso"]:
+                                loc = aba_termo.get_by_text(re.compile(re.escape(texto), re.IGNORECASE)).first
+                                if loc.count() > 0 and loc.is_visible():
+                                    loc.click()
+                        except Exception:
+                            pass
+                    aba_termo.wait_for_timeout(700)
+                    btn_enviar = aba_termo.get_by_role("button", name=re.compile(r"ENVIAR", re.IGNORECASE)).or_(aba_termo.locator('button:has-text("ENVIAR")').first)
+                    btn_enviar.first.wait_for(state="visible", timeout=5000)
+                    try:
+                        aba_termo.wait_for_function("() => { const all = document.querySelectorAll('button'); for (const x of all) { if ((x.textContent || '').trim().toUpperCase().includes('ENVIAR') && !x.disabled) return true; } return false; }", timeout=6000)
+                    except Exception:
+                        pass
+                    if os.environ.get("ROBO_DEBUG"):
+                        print("Termo: clicando ENVIAR...")
+                    btn_enviar.first.click()
+                    passo_termo = "esperar_obrigado"
+                    if os.environ.get("ROBO_DEBUG"):
+                        print("Termo: aguardando confirmação...")
+                    timeout_obrigado = getattr(config, "TIMEOUT_TERMO_OBRIGADO_MS", 25000)
+                    textos_obrigado = [config.UI_TEXTO_OBRIGADO] + getattr(config, "UI_TEXTO_OBRIGADO_ALT", [])
+                    obrigado_ok = False
+                    for txt in textos_obrigado:
+                        try:
+                            aba_termo.wait_for_selector(f"text={txt}", timeout=timeout_obrigado // len(textos_obrigado))
+                            obrigado_ok = True
+                            break
+                        except Exception:
+                            pass
+                    if not obrigado_ok:
+                        aba_termo.wait_for_selector(f"text={config.UI_TEXTO_OBRIGADO}", timeout=timeout_obrigado)
+                    aba_termo.close()
+                    page.bring_to_front()
+                    page.get_by_role("button", name=config.UI_BOTAO_VOLTAR).first.wait_for(state="visible", timeout=8000)
+                    page.get_by_role("button", name=config.UI_BOTAO_VOLTAR).first.click()
+                    page.wait_for_timeout(400)
+                    campo_cpf.fill(cpf_site)
+                    selecionar_banco_qitech()
+                    btn_consultar.first.click()
+                    page.wait_for_timeout(config.PAUSA_APOS_CONSULTAR_MS)
+                    try:
+                        page.wait_for_load_state("domcontentloaded", timeout=10000)
+                    except Exception:
+                        pass
+                    page.wait_for_timeout(config.PAUSA_APOS_CONSULTAR_MS)
+                except Exception as e_termo:
+                    try:
+                        aba_termo.close()
+                    except Exception:
+                        pass
+                    page.bring_to_front()
+                    msg_termo = str(e_termo).replace("\n", " ").replace("\r", "")[:450]
+                    tipo_termo = type(e_termo).__name__
+                    escrever_linha_saida(caminho_saida, [cliente.nome, cliente.cpf, cliente.contato, cliente.email, "", "", "", "", "", "falha_termo_autorizacao", f"Termo ({passo_termo}): {tipo_termo}: {msg_termo}"])
+                    voltar_para_consulta_limpa(page)
+                    continue 
+            
             msg_vinculo = page.get_by_text(config.UI_TEXTO_SEM_VINCULO, exact=False).first
             try:
                 vinculo_visivel = msg_vinculo.is_visible()
