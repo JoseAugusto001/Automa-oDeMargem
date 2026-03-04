@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # RoboPrata – Consulta Margem CLT
 
 Robô de automação que consulta margem CLT no painel admin do Banco Prata: lê clientes de um CSV, faz login, consulta por CPF (QiTech), trata modal de autorização do termo quando necessário, obtém valor máximo da parcela e simula por tabelas, gravando resultado em CSV.
@@ -85,3 +86,7 @@ Status típicos: `sucesso`, `cpf_invalido`, `restricao_emissao`, `sem_vinculo`, 
 
 - **Credenciais:** as variáveis `ADMIN_EMAIL` e `ADMIN_SENHA` devem estar no `.env` (copie `.env.example` para `.env` e preencha). Sem elas o login no admin falha.
 - O bug que causava `falha_modal_autorizacao` ("Não consegui extrair a URL do termo") foi corrigido: a extração do link do `<a href>` no modal de autorização passa a ser tentada sempre que o dialog está visível. O link do termo pode ser de vários domínios (assina.bancoprata.com.br, pratadigital.com.br, link.bancoapri.com.br), configurável em `config.URL_TERMO_DOMAINS`. Se o preenchimento/envio do formulário do termo falhar, o status gravado é `falha_termo_autorizacao`.
+=======
+"# Automa-oDeMargem" 
+"# Automa-oDeMargem" 
+>>>>>>> ee31b9adf32498884f6a7161fa1d9c34b21d4d05

@@ -1,7 +1,3 @@
-# Copie este arquivo para credenciais.py.
-# As credenciais (ADMIN_EMAIL e ADMIN_SENHA) ficam no .env; este módulo apenas as carrega de lá.
-# Crie .env a partir de .env.example e preencha. Nunca commite .env nem credenciais.py.
-
 import os
 from dotenv import load_dotenv
 

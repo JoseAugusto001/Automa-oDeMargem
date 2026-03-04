@@ -7,3 +7,4 @@ venv/
 .venv/
 myvenv/
 env/
+*.log
