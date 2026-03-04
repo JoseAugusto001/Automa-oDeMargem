@@ -8,3 +8,4 @@ venv/
 myvenv/
 env/
 *.log
+credenciais.py
