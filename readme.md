@@ -1,3 +1,7 @@
+<<<<<<< HEAD
+# RoboPrata – Consulta Margem CLT
+
+
 =======
 "# Automa-oDeMargem" 
 "# Automa-oDeMargem" 
