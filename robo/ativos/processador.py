@@ -809,16 +809,30 @@ def processar_clientes(page: Page, clientes: Iterable[Cliente], caminho_saida: s
                         if not pagina_resultado.is_closed():
                             try:
                                 pagina_resultado.bring_to_front()
-                                pagina_resultado.wait_for_timeout(300)
+                            except Exception:
+                                pass
+                        timeout_bloco = getattr(config, "TIMEOUT_ESPERA_BLOCO_SIMULACAO_MS", 10000)
+                        try:
+                            pagina_resultado.locator("tr.expanded-row, .simulation, .simulation-table").first.wait_for(state="visible", timeout=timeout_bloco)
+                        except Exception:
+                            try:
+                                pagina_resultado.get_by_text(config.UI_TEXTO_VALOR_MAXIMO_PARCELA, exact=False).first.wait_for(state="visible", timeout=timeout_bloco)
                             except Exception:
                                 pass
                         escopo_simulacao: Any = pagina_resultado
                         try:
-                            bloco = pagina_resultado.locator("div, section").filter(has=pagina_resultado.get_by_text(config.UI_TEXTO_VALOR_MAXIMO_PARCELA, exact=False)).filter(has=pagina_resultado.get_by_text(config.UI_LABEL_TABELA, exact=False)).first
-                            if bloco.count() > 0 and bloco.is_visible():
-                                escopo_simulacao = bloco
+                            bloco_vue = pagina_resultado.locator("tr.expanded-row").locator(".simulation, .simulation-table").first
+                            if bloco_vue.count() > 0 and bloco_vue.is_visible():
+                                escopo_simulacao = bloco_vue
                         except Exception:
                             pass
+                        if escopo_simulacao == pagina_resultado:
+                            try:
+                                bloco = pagina_resultado.locator("div, section").filter(has=pagina_resultado.get_by_text(config.UI_TEXTO_VALOR_MAXIMO_PARCELA, exact=False)).filter(has=pagina_resultado.get_by_text(config.UI_LABEL_TABELA, exact=False)).first
+                                if bloco.count() > 0 and bloco.is_visible():
+                                    escopo_simulacao = bloco
+                            except Exception:
+                                pass
                         if escopo_simulacao == pagina_resultado and "clt/consultar" in pagina_resultado.url:
                             try:
                                 bloco_expandido = linha_cpf.locator("xpath=following-sibling::*[1]").or_(linha_cpf.locator("xpath=ancestor::*[.//*[contains(translate(text(), 'VALOR', 'valor'), 'valor máximo')]][1]")).first
@@ -832,10 +846,6 @@ def processar_clientes(page: Page, clientes: Iterable[Cliente], caminho_saida: s
                             pass
                         try:
                             escopo_simulacao.get_by_label(config.UI_LABEL_TIPO).select_option(label=config.UI_OPCAO_VALOR_PARCELA)
-                        except Exception:
-                            pass
-                        try:
-                            pagina_resultado.wait_for_timeout(200)
                         except Exception:
                             pass
                         gravou_alguma_linha_simulacao = historico.simular_tabelas(escopo_simulacao, valor_maximo_parcela, cliente, banco_atual, lista_saida, pagina_resultado)

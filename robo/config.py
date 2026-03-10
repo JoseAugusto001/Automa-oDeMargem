@@ -109,9 +109,10 @@ UI_TEXTO_SUCESSO = "Sucesso"
 UI_TEXTO_VALOR_MAXIMO_PARCELA = "Valor máximo da parcela"
 UI_LABEL_TABELA = "Tabela"
 UI_PLACEHOLDER_TABELA = "Selecione uma opção"
-# Se o dropdown Tabela não abrir: rode "playwright codegen URL" e clique na Tabela; cole o seletor aqui (ex: "[id='tabela']" ou ".classe-do-dropdown")
-LOCATOR_TABELA_DROPDOWN = None
-UI_TABELA_VARIANTES_MESES = {6: ["6 meses (C)", "6 meses"], 12: ["12 meses (C)", "12 meses"], 18: ["18 meses (C)", "18 meses"], 24: ["24 meses (C)", "24 meses"]}
+# Dropdown Tabela: estrutura Vue (tr.expanded-row > .simulation / .simulation-table)
+LOCATOR_TABELA_DROPDOWN = ".simulation [role='combobox'], .simulation-table [role='combobox'], .simulation select, .simulation-table select"
+UI_TABELA_VARIANTES_MESES = {6: ["6 meses (C)", "6 meses"], 12: ["12 meses (C)", "12 meses"], 24: ["24 meses (C)", "24 meses"]}
+TIMEOUT_ESPERA_BLOCO_SIMULACAO_MS = 10000
 UI_LABEL_TIPO = "Tipo"
 UI_OPCAO_VALOR_PARCELA = "Valor da parcela"
 UI_OPCAO_VALOR_TOTAL = "Valor total"

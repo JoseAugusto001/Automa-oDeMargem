@@ -311,7 +311,19 @@ def _clicar_tabela_via_js_pagina(pagina: "Page | Locator") -> bool:
 
 
 def _obter_escopo_simulacao(escopo: "Page | Locator") -> "Page | Locator":
-    """Detecta um div/section que contenha 'Valor máximo da parcela' e o label 'Tabela' (não Tipo) para usar como escopo."""
+    """Prioriza bloco Vue (tr.expanded-row > .simulation/.simulation-table); fallback por texto."""
+    try:
+        bloco = escopo.locator("tr.expanded-row").locator(".simulation, .simulation-table").first
+        if bloco.count() > 0 and bloco.is_visible():
+            return bloco
+    except Exception:
+        pass
+    try:
+        bloco = escopo.locator("section.expanded_row").locator(".simulation, .simulation-table").first
+        if bloco.count() > 0 and bloco.is_visible():
+            return bloco
+    except Exception:
+        pass
     texto_valor = getattr(config, "UI_TEXTO_VALOR_MAXIMO_PARCELA", "Valor máximo da parcela")
     label_tabela = getattr(config, "UI_LABEL_TABELA", "Tabela")
     try:
@@ -346,10 +358,18 @@ def simular_tabelas(
     pagina_resultado: "Page | None" = None,
 ) -> bool:
     pagina_ui: "Page | Locator" = pagina_resultado if pagina_resultado is not None else escopo
+    timeout_bloco = getattr(config, "TIMEOUT_ESPERA_BLOCO_SIMULACAO_MS", 10000)
+    try:
+        escopo.locator(".simulation, .simulation-table, tr.expanded-row").first.wait_for(state="visible", timeout=timeout_bloco)
+    except Exception:
+        try:
+            escopo.get_by_text(config.UI_TEXTO_VALOR_MAXIMO_PARCELA, exact=False).first.wait_for(state="visible", timeout=timeout_bloco)
+        except Exception:
+            pass
     escopo = _obter_escopo_simulacao(escopo)
-    meses_array = [6, 12, 18, 24]
-    labels_celcoin = ["6 meses (C)", "12 meses (C)", "18 meses (C)", "24 meses (C)"]
-    labels_qitech = ["6 meses", "12 meses", "18 meses", "24 meses"]
+    meses_array = [6, 12, 24]
+    labels_celcoin = ["6 meses (C)", "12 meses (C)", "24 meses (C)"]
+    labels_qitech = ["6 meses", "12 meses", "24 meses"]
     is_celcoin = "celcoin" in (banco_atual or "").lower()
     opcoes_com_meses = [
         (meses_array[i], labels_celcoin[i] if is_celcoin else labels_qitech[i])
@@ -357,8 +377,8 @@ def simular_tabelas(
     ]
     variantes_por_mes = getattr(config, "UI_TABELA_VARIANTES_MESES", None)
     if variantes_por_mes is None:
-        variantes_por_mes = {6: ["6 meses (C)", "6 meses"], 12: ["12 meses (C)", "12 meses"], 18: ["18 meses (C)", "18 meses"], 24: ["24 meses (C)", "24 meses"]}
-    pausa_dropdown = getattr(config, "PAUSA_APOS_ABRIR_DROPDOWN_TABELA_MS", 800)
+        variantes_por_mes = {6: ["6 meses (C)", "6 meses"], 12: ["12 meses (C)", "12 meses"], 24: ["24 meses (C)", "24 meses"]}
+    pausa_dropdown = getattr(config, "PAUSA_APOS_ABRIR_DROPDOWN_TABELA_MS", 600)
     timeout_opcao = getattr(config, "TIMEOUT_OPCAO_TABELA_MS", 2500)
     gravou_alguma = False
     for _meses, label_tabela in opcoes_com_meses:
@@ -370,7 +390,6 @@ def simular_tabelas(
         erro_linha = ""
         try:
             trigger_aberto = False
-            ph_tabela = getattr(config, "UI_PLACEHOLDER_TABELA", "Selecione uma opção")
             locator_tabela_custom = getattr(config, "LOCATOR_TABELA_DROPDOWN", None)
             if locator_tabela_custom and isinstance(locator_tabela_custom, str):
                 try:
@@ -387,84 +406,10 @@ def simular_tabelas(
                         pass
             if not trigger_aberto and _abrir_tabela_por_teclado(pagina_ui, escopo):
                 trigger_aberto = True
-            if _clicar_tabela_via_js(escopo):
+            if not trigger_aberto and _clicar_tabela_via_js(escopo):
                 trigger_aberto = True
-            if not trigger_aberto and pagina_resultado is not None:
-                if _clicar_tabela_via_js_pagina(pagina_resultado):
-                    trigger_aberto = True
-            if not trigger_aberto:
-                try:
-                    cb_tabela = escopo.get_by_label(config.UI_LABEL_TABELA).first
-                    if cb_tabela.count() > 0:
-                        cb_tabela.scroll_into_view_if_needed(timeout=1000)
-                        cb_tabela.click(force=True, timeout=1500)
-                        trigger_aberto = True
-                except Exception:
-                    pass
-            if not trigger_aberto:
-                try:
-                    cb_tabela = escopo.get_by_role("combobox", name=re.compile(r"tabela", re.I)).first
-                    if cb_tabela.count() > 0:
-                        cb_tabela.scroll_into_view_if_needed(timeout=1000)
-                        cb_tabela.click(force=True, timeout=1500)
-                        trigger_aberto = True
-                except Exception:
-                    pass
-            if not trigger_aberto:
-                try:
-                    cb = escopo.locator('[role="combobox"]').nth(1)
-                    if cb.count() > 0:
-                        cb.scroll_into_view_if_needed(timeout=1000)
-                        cb.click(force=True, timeout=1500)
-                        trigger_aberto = True
-                except Exception:
-                    pass
-            if not trigger_aberto:
-                try:
-                    lbl_tabela = escopo.get_by_text(config.UI_LABEL_TABELA, exact=True).first
-                    if lbl_tabela.count() > 0:
-                        lbl_tabela.scroll_into_view_if_needed(timeout=1000)
-                        lbl_tabela.click(force=True, timeout=1500)
-                        trigger_aberto = True
-                except Exception:
-                    pass
-            if not trigger_aberto:
-                try:
-                    el_ph = escopo.get_by_label(config.UI_LABEL_TABELA).get_by_text(ph_tabela, exact=False).first
-                    if el_ph.count() > 0 and el_ph.is_visible():
-                        el_ph.scroll_into_view_if_needed(timeout=1000)
-                        el_ph.click(force=True, timeout=1500)
-                        trigger_aberto = True
-                except Exception:
-                    pass
-            if not trigger_aberto:
-                try:
-                    el_ph = escopo.get_by_text(ph_tabela, exact=False).first
-                    if el_ph.count() > 0 and el_ph.is_visible():
-                        el_ph.scroll_into_view_if_needed(timeout=1000)
-                        el_ph.click(force=True, timeout=1500)
-                        trigger_aberto = True
-                except Exception:
-                    pass
-            if not trigger_aberto:
-                try:
-                    cb = escopo.locator('[role="combobox"]').nth(0)
-                    if cb.count() > 0:
-                        cb.scroll_into_view_if_needed(timeout=1000)
-                        cb.click(force=True, timeout=1500)
-                        trigger_aberto = True
-                except Exception:
-                    pass
-            if not trigger_aberto:
-                try:
-                    bloco_tabela = escopo.locator('div, section').filter(has=escopo.get_by_text(config.UI_LABEL_TABELA, exact=True)).filter(has=escopo.get_by_text(ph_tabela, exact=False)).first
-                    if bloco_tabela.count() > 0:
-                        bloco_tabela.locator('[role="combobox"], select, [aria-haspopup], div[class*="select"], div[class*="Select"]').first.click(force=True, timeout=1500)
-                        trigger_aberto = True
-                except Exception:
-                    pass
-            if not trigger_aberto:
-                _clicar_por_texto(pagina_ui, "Tabela")
+            if not trigger_aberto and pagina_resultado is not None and _clicar_tabela_via_js_pagina(pagina_resultado):
+                trigger_aberto = True
             wait_fn = getattr(pagina_ui, "wait_for_timeout", None)
             if wait_fn is not None:
                 wait_fn(pausa_dropdown)
@@ -476,18 +421,26 @@ def simular_tabelas(
                 if opcao_clicada:
                     break
                 try:
-                    sel = escopo.get_by_label(config.UI_LABEL_TABELA)
-                    if sel.count() > 0:
-                        sel.select_option(label=lbl_opcao, timeout=timeout_opcao)
+                    opt_portal = pagina_ui.locator(".vue-portal-target").get_by_text(lbl_opcao, exact=False).first
+                    if opt_portal.count() > 0 and opt_portal.is_visible():
+                        opt_portal.click(timeout=timeout_opcao)
                         opcao_clicada = True
                 except Exception:
                     pass
                 if not opcao_clicada:
                     try:
-                        opt = pagina_ui.get_by_role("option", name=lbl_opcao).first
+                        opt = pagina_ui.get_by_role("option").filter(has_text=re.compile(re.escape(lbl_opcao), re.I)).first
                         if opt.count() > 0:
                             opt.wait_for(state="visible", timeout=min(1500, timeout_opcao))
                             opt.click(timeout=timeout_opcao)
+                            opcao_clicada = True
+                    except Exception:
+                        pass
+                if not opcao_clicada:
+                    try:
+                        sel = escopo.get_by_label(config.UI_LABEL_TABELA)
+                        if sel.count() > 0:
+                            sel.select_option(label=lbl_opcao, timeout=timeout_opcao)
                             opcao_clicada = True
                     except Exception:
                         pass
@@ -502,7 +455,7 @@ def simular_tabelas(
                         pass
                 if not opcao_clicada:
                     try:
-                        loc = escopo.locator(f'[role="option"]:has-text("{lbl_opcao}"), div:has-text("{lbl_opcao}"), li:has-text("{lbl_opcao}")').first
+                        loc = pagina_ui.locator(f'[role="option"]:has-text("{lbl_opcao}"), div:has-text("{lbl_opcao}"), li:has-text("{lbl_opcao}")').first
                         if loc.count() > 0 and loc.is_visible():
                             loc.click(timeout=timeout_opcao)
                             opcao_clicada = True
@@ -512,9 +465,10 @@ def simular_tabelas(
                 opcao_clicada = _clicar_por_texto(pagina_ui, label_tabela, exato=True) or _clicar_por_texto(pagina_ui, label_tabela)
             if not opcao_clicada:
                 continue
-            wait_fn = getattr(pagina_ui, "wait_for_timeout", None)
-            if wait_fn is not None:
-                wait_fn(250)
+            try:
+                escopo.get_by_role("button", name=config.UI_BOTAO_SIMULAR).first.wait_for(state="visible", timeout=1500)
+            except Exception:
+                pass
             try:
                 escopo.get_by_role("button", name=config.UI_BOTAO_SIMULAR).first.click(timeout=2000)
             except Exception:
@@ -530,6 +484,7 @@ def simular_tabelas(
             tentou_valor_total = False
             try:
                 if msg_maior.is_visible():
+                    linha_status = "valor_maior_que_disponivel"
                     tentou_valor_total = True
                     try:
                         escopo.get_by_label(config.UI_LABEL_TIPO).select_option(label=config.UI_OPCAO_VALOR_TOTAL)
@@ -607,7 +562,6 @@ def processar_resultado_existente_no_historico(page: "Page", cpf_site: str, banc
     from robo.comms import fluxo_consulta
     from robo.comms import navegacao
     try:
-        page.wait_for_timeout(200)
         pagina_consulta_antes = navegacao.obter_pagina_consulta_principal(page) or (page.context.pages[0] if page.context.pages else page)
         try:
             pagina_consulta_antes.bring_to_front()
@@ -617,7 +571,6 @@ def processar_resultado_existente_no_historico(page: "Page", cpf_site: str, banc
             page.locator(f"#{config.UI_ID_BOTAO_CONSULTAR_SALDO}").or_(page.get_by_role("button", name=config.UI_BOTAO_CONSULTAR_SALDO)).first.wait_for(state="visible", timeout=5000)
         except Exception:
             pass
-        page.wait_for_timeout(200)
         if fluxo_consulta.pagina_tem_registro_nao_encontrado(page):
             msg_reg = getattr(config, "UI_TEXTO_REGISTRO_NAO_ENCONTRADO_MSG", "Infelizmente não foi possível encontrar este registro.")
             log_critico(lista_saida, cliente, banco_atual, "registro_nao_encontrado", msg_reg)
@@ -714,7 +667,10 @@ def processar_resultado_existente_no_historico(page: "Page", cpf_site: str, banc
                 except Exception:
                     raise
             btn_ver_resultado_antes.scroll_into_view_if_needed(timeout=3000)
-            pagina_consulta_antes.wait_for_timeout(150)
+            try:
+                btn_ver_resultado_antes.wait_for(state="visible", timeout=500)
+            except Exception:
+                pass
             pagina_resultado_antes, ok = abrir_resultado_historico(page.context, btn_ver_resultado_antes, pagina_consulta_antes)
             if not ok or pagina_resultado_antes is None:
                 raise RuntimeError("Falha ao abrir resultado")
