@@ -2,7 +2,7 @@ import argparse
 import os
 
 import config
-from robo_consulta_margem import executar_robo
+from robo.ativos.executor import executar_robo
 
 
 if __name__ == "__main__":

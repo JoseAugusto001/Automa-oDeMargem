@@ -1,4 +1,5 @@
-from robo.comms.navegacao import login_e_ir_para_consulta, voltar_para_consulta_limpa
+from robo.comms.historico import abrir_resultado_historico, buscar_linha_historico, extrair_valor_maximo_parcela, processar_resultado_existente_no_historico, simular_tabelas, tratar_recusa_ou_requisicao_mal_formatada
+from robo.comms.navegacao import fechar_pagina_se_aberta, login_e_ir_para_consulta, obter_pagina_consulta_principal, voltar_para_consulta_limpa
 from robo.comms.termo import abrir_termo_em_nova_aba, extrair_link_termo_do_modal, extrair_link_termo_pagina
 from robo.comms.fluxo_consulta import (
     garantir_cpf_preenchido,
@@ -12,7 +13,15 @@ from robo.comms.fluxo_consulta import (
 )
 
 __all__ = [
+    "abrir_resultado_historico",
+    "buscar_linha_historico",
+    "extrair_valor_maximo_parcela",
+    "processar_resultado_existente_no_historico",
+    "simular_tabelas",
+    "tratar_recusa_ou_requisicao_mal_formatada",
+    "fechar_pagina_se_aberta",
     "login_e_ir_para_consulta",
+    "obter_pagina_consulta_principal",
     "voltar_para_consulta_limpa",
     "abrir_termo_em_nova_aba",
     "extrair_link_termo_do_modal",
