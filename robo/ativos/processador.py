@@ -353,14 +353,14 @@ def processar_clientes(page: Page, clientes: Iterable[Cliente], caminho_saida: s
                 if banner_nova_versao.is_visible():
                     try:
                         with page.expect_navigation(timeout=12000):
-                            page.wait_for_timeout(10000)
+                            page.wait_for_timeout(300)
                     except Exception:
                         pass
                     try:
                         page.wait_for_load_state("domcontentloaded", timeout=10000)
                     except Exception:
                         pass
-                    page.wait_for_timeout(1500)
+                    page.wait_for_timeout(300)
             except Exception:
                     pass
             page.wait_for_timeout(200)
@@ -403,11 +403,6 @@ def processar_clientes(page: Page, clientes: Iterable[Cliente], caminho_saida: s
                     csv_io.log_critico(lista_saida, cliente, banco_atual, "erro_selecao_banco", "Não foi possível selecionar o banco no formulário")
                     pular_cliente = True
                     break
-                try:
-                    page.wait_for_load_state("domcontentloaded", timeout=6000)
-                except Exception:
-                    pass
-                page.wait_for_timeout(200)
                 campo_cpf = page.get_by_label(config.UI_LABEL_CPF).or_(page.get_by_placeholder(config.UI_PLACEHOLDER_CPF)).or_(page.locator('input[name="cpf"], input[id*="cpf"]').first)
                 try:
                     campo_cpf.fill(cpf_site)
@@ -431,8 +426,10 @@ def processar_clientes(page: Page, clientes: Iterable[Cliente], caminho_saida: s
                 fluxo_consulta.garantir_cpf_preenchido(page, cpf_site)
                 pg_consulta = pagina_consulta_principal or page
                 btn_consultar = pg_consulta.locator(f"#{config.UI_ID_BOTAO_CONSULTAR_SALDO}").or_(pg_consulta.get_by_role("button", name=config.UI_BOTAO_CONSULTAR_SALDO)).or_(pg_consulta.get_by_role("button", name=re.compile(r"consultar\s*saldo", re.IGNORECASE)))
-                btn_consultar.first.wait_for(state="visible", timeout=15000)
-                btn_consultar.first.scroll_into_view_if_needed(timeout=5000)
+                try:
+                    btn_consultar.first.scroll_into_view_if_needed(timeout=2000)
+                except Exception:
+                    pass
                 nav_ocorreu = False
                 try:
                     btn_consultar.first.click(force=True)
@@ -460,23 +457,19 @@ def processar_clientes(page: Page, clientes: Iterable[Cliente], caminho_saida: s
                         except Exception:
                             pass
                         return False
-                    for _ in range(50):
+                    for _ in range(20):
                         if resultado_apareceu():
                             nav_ocorreu = True
                             break
-                        page.wait_for_timeout(200)
+                        page.wait_for_timeout(100)
                 except Exception as e:
                     csv_io.log_critico(lista_saida, cliente, banco_atual, "falha_historico", str(e)[:300])
                     continue
                 if not nav_ocorreu:
                     try:
-                        page.wait_for_timeout(2000)
+                        page.wait_for_load_state("domcontentloaded", timeout=8000)
                     except Exception:
                         pass
-                try:
-                    page.wait_for_load_state("domcontentloaded", timeout=10000)
-                except Exception:
-                    pass
                 page.wait_for_timeout(config.PAUSA_APOS_CONSULTAR_MS)
                 if fluxo_consulta.pagina_tem_registro_nao_encontrado(page):
                     msg_reg = getattr(config, "UI_TEXTO_REGISTRO_NAO_ENCONTRADO_MSG", "Infelizmente não foi possível encontrar este registro.")
@@ -541,7 +534,7 @@ def processar_clientes(page: Page, clientes: Iterable[Cliente], caminho_saida: s
                     page.get_by_text(textos_modal_banco[0], exact=False).first.wait_for(state="visible", timeout=8000)
                     url_termo = termo.extrair_link_termo_do_modal(page)
                     if not url_termo:
-                        page.wait_for_timeout(500)
+                        page.wait_for_timeout(200)
                         doms = getattr(config, "URL_TERMO_DOMAINS", ["assina.bancoprata.com.br"])
                         try:
                             for el in page.locator("input[readonly], input:not([type='hidden']), textarea").all():
@@ -584,8 +577,8 @@ def processar_clientes(page: Page, clientes: Iterable[Cliente], caminho_saida: s
                     csv_io.log_critico(lista_saida, cliente, banco_atual, "erro_na_consulta", msg_erro)
                     navegacao.voltar_para_consulta_limpa(page)
                     continue
-                print("URL termo:", url_termo)
                 if url_termo:
+                    print("URL termo:", url_termo)
                     passo_termo = "inicio"
                     try:
                         parsed = urlparse(url_termo)
@@ -688,38 +681,55 @@ def processar_clientes(page: Page, clientes: Iterable[Cliente], caminho_saida: s
                         csv_io.log_critico(lista_saida, cliente, banco_atual, "falha_historico", str(e)[:300])
                         continue
                 try:
-                    try:
-                        page.wait_for_load_state("domcontentloaded", timeout=10000)
-                    except Exception:
-                        pass
-                    page.wait_for_timeout(300)
+                    max_tentativas_tabela = getattr(config, "MAX_TENTATIVAS_TABELA_VISIVEL", 3)
+                    linha_cpf = None
+                    locadores_linha = []
+                    status_historico = None
                     pagina_consulta = navegacao.obter_pagina_consulta_principal(page) or (page.context.pages[0] if page.context.pages else page)
-                    try:
-                        pagina_consulta.bring_to_front()
-                    except Exception as e:
-                        csv_io.log_critico(lista_saida, cliente, banco_atual, "falha_historico", str(e)[:300])
-                        continue
-                    page.wait_for_timeout(400)
-                    for _ in range(10):
+                    for tentativa in range(max_tentativas_tabela):
                         try:
-                            if pagina_consulta.get_by_text(cpf_site, exact=False).first.is_visible():
-                                break
+                            page.wait_for_load_state("domcontentloaded", timeout=10000)
                         except Exception:
                             pass
-                        page.wait_for_timeout(500)
-                    timeout_por_tentativa = min(5000, timeout_ms // 3)
-                    linha_cpf, locadores_linha = historico.buscar_linha_historico(pagina_consulta, cpf_site, banco_atual, cliente, timeout_por_tentativa, max_tentativas=2, usar_recarregar=getattr(config, "USE_RECARREGAR_HISTORICO", False))
-                    if linha_cpf is None:
-                        if check_historico_apos_erro:
-                            msg_req_mal = getattr(config, "UI_TEXTO_REQUISICAO_MAL_FORMATADA_MSG", "Requisição mal formatada no termo")
-                            csv_io.log_critico(lista_saida, cliente, banco_atual, "requisicao_mal_formatada", msg_req_mal)
-                            navegacao.voltar_para_consulta_limpa(page)
+                        page.wait_for_timeout(200)
+                        pagina_consulta = navegacao.obter_pagina_consulta_principal(page) or (page.context.pages[0] if page.context.pages else page)
+                        try:
+                            pagina_consulta.bring_to_front()
+                        except Exception as e:
+                            csv_io.log_critico(lista_saida, cliente, banco_atual, "falha_historico", str(e)[:300])
+                            break
+                        page.wait_for_timeout(200)
+                        for _ in range(5):
+                            try:
+                                if pagina_consulta.get_by_text(cpf_site, exact=False).first.is_visible():
+                                    break
+                            except Exception:
+                                pass
+                            page.wait_for_timeout(200)
+                        timeout_por_tentativa = min(5000, timeout_ms // 3)
+                        linha_cpf, locadores_linha = historico.buscar_linha_historico(pagina_consulta, cpf_site, banco_atual, cliente, timeout_por_tentativa, max_tentativas=2, usar_recarregar=getattr(config, "USE_RECARREGAR_HISTORICO", False))
+                        if linha_cpf is None:
+                            if check_historico_apos_erro:
+                                msg_req_mal = getattr(config, "UI_TEXTO_REQUISICAO_MAL_FORMATADA_MSG", "Requisição mal formatada no termo")
+                                csv_io.log_critico(lista_saida, cliente, banco_atual, "requisicao_mal_formatada", msg_req_mal)
+                                navegacao.voltar_para_consulta_limpa(page)
+                                break
+                            page.wait_for_timeout(300)
                             continue
-                        raise Exception("Linha do CPF não encontrada no histórico")
-                    status_historico, linha_cpf = _aguardar_status_linha_historico(
-                        pagina_consulta, page, linha_cpf, locadores_linha, timeout_por_tentativa,
-                        check_historico_apos_erro, lista_saida, cliente, banco_atual
-                    )
+                        status_historico, linha_cpf = _aguardar_status_linha_historico(
+                            pagina_consulta, page, linha_cpf, locadores_linha, timeout_por_tentativa,
+                            check_historico_apos_erro, lista_saida, cliente, banco_atual
+                        )
+                        if status_historico in ("erro", "requisicao_mal_formatada", "processando_timeout"):
+                            break
+                        if linha_cpf is None:
+                            page.wait_for_timeout(300)
+                            continue
+                        break
+                    if linha_cpf is None and not check_historico_apos_erro:
+                        csv_io.log_critico(lista_saida, cliente, banco_atual, "falha_historico", f"Tabela não ficou visível após {max_tentativas_tabela} tentativas")
+                        navegacao.voltar_para_consulta_limpa(page)
+                        continue
                     if status_historico in ("erro", "requisicao_mal_formatada", "processando_timeout"):
                         continue
                     if linha_cpf is None:
@@ -781,7 +791,7 @@ def processar_clientes(page: Page, clientes: Iterable[Cliente], caminho_saida: s
                     status = "falha_historico"
                 try:
                     if pagina_resultado and not pagina_resultado.is_closed():
-                        pagina_resultado.get_by_text(getattr(config, "UI_PLACEHOLDER_TABELA", "Selecione uma opção"), exact=False).first.wait_for(state="visible", timeout=3000)
+                        pagina_resultado.locator(".simulation, .simulation-table, tr.expanded-row").or_(pagina_resultado.get_by_text(getattr(config, "UI_PLACEHOLDER_TABELA", "Selecione uma opção"), exact=False)).first.wait_for(state="visible", timeout=4000)
                 except Exception:
                     pass
                 if not valor_maximo_parcela and pagina_resultado and not pagina_resultado.is_closed():
@@ -811,7 +821,7 @@ def processar_clientes(page: Page, clientes: Iterable[Cliente], caminho_saida: s
                                 pagina_resultado.bring_to_front()
                             except Exception:
                                 pass
-                        timeout_bloco = getattr(config, "TIMEOUT_ESPERA_BLOCO_SIMULACAO_MS", 10000)
+                        timeout_bloco = getattr(config, "TIMEOUT_ESPERA_BLOCO_SIMULACAO_MS", 6000)
                         try:
                             pagina_resultado.locator("tr.expanded-row, .simulation, .simulation-table").first.wait_for(state="visible", timeout=timeout_bloco)
                         except Exception:
@@ -841,20 +851,24 @@ def processar_clientes(page: Page, clientes: Iterable[Cliente], caminho_saida: s
                             except Exception:
                                 pass
                         try:
-                            escopo_simulacao.get_by_text(config.UI_TEXTO_VALOR_MAXIMO_PARCELA, exact=False).first.wait_for(state="visible", timeout=5000)
+                            escopo_simulacao.get_by_text(config.UI_TEXTO_VALOR_MAXIMO_PARCELA, exact=False).first.wait_for(state="visible", timeout=3000)
                         except Exception:
                             pass
                         try:
                             escopo_simulacao.get_by_label(config.UI_LABEL_TIPO).select_option(label=config.UI_OPCAO_VALOR_PARCELA)
                         except Exception:
                             pass
-                        gravou_alguma_linha_simulacao = historico.simular_tabelas(escopo_simulacao, valor_maximo_parcela, cliente, banco_atual, lista_saida, pagina_resultado)
+                        def _cb_tabela(aberto: bool, metodo: str) -> None:
+                            print(f"[Tabela] aberta={aberto} metodo={metodo}")
+                        gravou_alguma_linha_simulacao = historico.simular_tabelas(escopo_simulacao, valor_maximo_parcela, cliente, banco_atual, lista_saida, pagina_resultado, on_abrir_tabela=_cb_tabela)
                     except Exception:
                         try:
                             v_fallback = valor_maximo_parcela
                             if not v_fallback:
                                 v_fallback = historico.extrair_valor_maximo_parcela(pagina_resultado)
-                            gravou_alguma_linha_simulacao = historico.simular_tabelas(pagina_resultado, v_fallback, cliente, banco_atual, lista_saida, pagina_resultado)
+                            def _cb_tabela_fb(aberto: bool, metodo: str) -> None:
+                                print(f"[Tabela fallback] aberta={aberto} metodo={metodo}")
+                            gravou_alguma_linha_simulacao = historico.simular_tabelas(pagina_resultado, v_fallback, cliente, banco_atual, lista_saida, pagina_resultado, on_abrir_tabela=_cb_tabela_fb)
                         except Exception:
                             pass
                 if valor_maximo_parcela and not gravou_alguma_linha_simulacao:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, List, Tuple
+from typing import TYPE_CHECKING, Callable, List, Optional, Tuple, cast
 
 import config
 from robo.passivos.csv_io import log_critico
@@ -9,6 +9,139 @@ from robo.passivos.modelos import Cliente
 
 if TYPE_CHECKING:
     from playwright.sync_api import Locator, Page
+
+
+def _get_page(loc_or_page: "Page | Locator") -> "Page | None":
+    """Obtém a Page a partir de um Locator ou Page. Page tem .keyboard; Locator tem .page."""
+    if hasattr(loc_or_page, "keyboard"):
+        return cast("Page", loc_or_page)
+    if hasattr(loc_or_page, "page"):
+        return getattr(loc_or_page, "page", None)
+    return None
+
+
+def _opcoes_dropdown_visiveis(pagina_ui: "Page | Locator", label_tabela: str, timeout_ms: int = 800) -> bool:
+    """Verifica se as opções do dropdown (portal ou role=option) estão visíveis."""
+    try:
+        pagina_ui.locator(".vue-portal-target").get_by_text(label_tabela, exact=False).first.wait_for(state="visible", timeout=timeout_ms)
+        return True
+    except Exception:
+        pass
+    try:
+        pagina_ui.get_by_role("option").first.wait_for(state="visible", timeout=timeout_ms)
+        return True
+    except Exception:
+        pass
+    return False
+
+
+def _selecionar_tabela_select_nativo(escopo: "Page | Locator", meses: int, label_opcao: str, timeout_ms: int = 2500) -> bool:
+    """Se o bloco Tabela for um <select> nativo (ex.: span com label Tabela > div.select > select), seleciona por value ou label.
+    Usa select_option + dispatch input/change; fallback com clique no select + teclado (ArrowDown + Enter) para Vue reconhecer."""
+    label_tabela = getattr(config, "UI_LABEL_TABELA", "Tabela")
+    try:
+        sel = escopo.locator("span").filter(has=escopo.get_by_text(label_tabela, exact=False)).locator("select").first
+        if sel.count() == 0:
+            sel = escopo.locator("div.control").filter(has=escopo.locator("label").filter(has_text=label_tabela)).locator("select").first
+        if sel.count() == 0:
+            sel = escopo.locator("div.control").filter(has_text=label_tabela).locator("select").first
+        if sel.count() == 0:
+            sel = escopo.locator("select").filter(has=escopo.locator("option[value='68']")).first
+        if sel.count() == 0:
+            try:
+                selects = escopo.locator("select").all()
+                for s in selects:
+                    if s.count() > 0 and s.is_visible():
+                        opt = s.locator("option[value='65'], option[value='66'], option[value='68']").first
+                        if opt.count() > 0:
+                            sel = s
+                            break
+            except Exception:
+                pass
+        if sel.count() == 0:
+            sel = escopo.locator("select").nth(1)
+        if sel.count() == 0:
+            return False
+        value_map = {6: "65", 12: "66", 18: "67", 24: "68"}
+        val = value_map.get(meses)
+        try:
+            sel.evaluate("""(el, val) => {
+                if (!val) return;
+                el.value = val;
+                el.selectedIndex = Array.from(el.options).findIndex(o => o.value === val);
+                if (el.selectedIndex < 0) return;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+                el.dispatchEvent(new Event('blur', { bubbles: true }));
+            }""", val)
+        except Exception:
+            pass
+        if val:
+            try:
+                sel.select_option(value=val, timeout=timeout_ms)
+            except Exception:
+                pass
+        else:
+            try:
+                sel.select_option(label=label_opcao, timeout=timeout_ms)
+            except Exception:
+                pass
+        try:
+            sel.evaluate("el => { el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }")
+        except Exception:
+            pass
+        page = _get_page(escopo)
+        if page is not None:
+            try:
+                try:
+                    wrapper = sel.locator("xpath=..")
+                    if wrapper.count() > 0 and wrapper.is_visible():
+                        wrapper.click(timeout=timeout_ms)
+                    else:
+                        sel.click(timeout=timeout_ms)
+                except Exception:
+                    sel.click(timeout=timeout_ms)
+                page.wait_for_timeout(150)
+                arrow_count = {24: 0, 18: 1, 12: 2, 6: 3}.get(meses, 0)
+                for _ in range(arrow_count):
+                    page.keyboard.press("ArrowDown")
+                    page.wait_for_timeout(40)
+                page.keyboard.press("Enter")
+                page.wait_for_timeout(80)
+            except Exception:
+                pass
+        return True
+    except Exception:
+        return False
+
+
+def _abrir_tabela_clique_e_enter(escopo: "Page | Locator", pagina_ui: "Page | Locator") -> bool:
+    """Abre o dropdown Tabela com clique real do Playwright no trigger + Enter."""
+    page = _get_page(pagina_ui)
+    if page is None:
+        return False
+    ph = getattr(config, "UI_PLACEHOLDER_TABELA", "Selecione uma opção")
+    try:
+        el = escopo.get_by_text(ph, exact=True).first
+        if el.count() > 0 and el.is_visible():
+            el.click(timeout=2000)
+            page.wait_for_timeout(200)
+            page.keyboard.press("Enter")
+            return True
+    except Exception:
+        pass
+    locator_custom = getattr(config, "LOCATOR_TABELA_DROPDOWN", None)
+    if locator_custom and isinstance(locator_custom, str):
+        try:
+            el = escopo.locator(locator_custom).first
+            if el.count() > 0 and el.is_visible():
+                el.click(timeout=2000)
+                page.wait_for_timeout(200)
+                page.keyboard.press("Enter")
+                return True
+        except Exception:
+            pass
+    return False
 
 
 def buscar_linha_historico(
@@ -78,17 +211,24 @@ def buscar_linha_historico(
 
 def abrir_resultado_historico(ctx, btn_ver_resultado, pagina_consulta=None) -> Tuple["Page | None", bool]:
     try:
-        with ctx.expect_page(timeout=1500) as popup_info:
+        with ctx.expect_page(timeout=3000) as popup_info:
             btn_ver_resultado.click()
         pagina_resultado = popup_info.value
-        pagina_resultado.wait_for_load_state("domcontentloaded", timeout=8000)
+        pagina_resultado.wait_for_load_state("domcontentloaded", timeout=4000)
+        try:
+            pagina_resultado.locator(".simulation, .simulation-table, tr.expanded-row").or_(pagina_resultado.get_by_text(getattr(config, "UI_PLACEHOLDER_TABELA", "Selecione uma opção"), exact=False)).first.wait_for(state="visible", timeout=4000)
+        except Exception:
+            try:
+                pagina_resultado.get_by_text(config.UI_TEXTO_VALOR_MAXIMO_PARCELA, exact=False).first.wait_for(state="visible", timeout=3000)
+            except Exception:
+                pass
         return (pagina_resultado, True)
     except BaseException:
         pass
     if pagina_consulta and not pagina_consulta.is_closed():
         ph = getattr(config, "UI_PLACEHOLDER_TABELA", "Selecione uma opção")
         try:
-            pagina_consulta.get_by_text(ph, exact=False).first.wait_for(state="visible", timeout=6000)
+            pagina_consulta.locator(".simulation, .simulation-table, tr.expanded-row").or_(pagina_consulta.get_by_text(ph, exact=False)).first.wait_for(state="visible", timeout=5000)
             return (pagina_consulta, True)
         except Exception:
             pass
@@ -229,9 +369,54 @@ def _abrir_tabela_por_teclado(pagina_ui: "Page | Locator", escopo: "Page | Locat
         return False
 
 
+def _disparar_clique_real_tabela(escopo: "Page | Locator") -> bool:
+    """Abre o dropdown Tabela com sequência de eventos (mousedown/mouseup/click) para Vue/Bootstrap."""
+    script = """(root) => {
+        const fire = (el) => {
+            if (!el || !el.offsetParent) return false;
+            el.focus();
+            const opts = { bubbles: true, cancelable: true, view: window };
+            el.dispatchEvent(new MouseEvent('mousedown', opts));
+            el.dispatchEvent(new MouseEvent('mouseup', opts));
+            el.dispatchEvent(new MouseEvent('click', opts));
+            return true;
+        };
+        const walk = (el, depth) => {
+            if (!el || depth > 25) return false;
+            const txt = (el.textContent || '').trim();
+            if (txt === 'Selecione uma opção' && (el.tagName === 'DIV' || el.tagName === 'SPAN' || el.tagName === 'LABEL')) {
+                if (fire(el)) return true;
+                let p = el.parentElement;
+                for (let i = 0; i < 6 && p; i++) {
+                    if (fire(p)) return true;
+                    const cb = p.querySelector('[role="combobox"], [aria-haspopup], [tabindex="0"]');
+                    if (cb && fire(cb)) return true;
+                    p = p.parentElement;
+                }
+            }
+            if ((el.textContent || '').includes('Valor máximo da parcela') && (el.textContent || '').includes('Tabela')) {
+                const ph = el.querySelector('[class*="select"], [class*="dropdown"], [role="combobox"], [aria-haspopup]');
+                if (ph && fire(ph)) return true;
+                const all = el.querySelectorAll('div, span');
+                for (const n of all) {
+                    if ((n.textContent || '').trim() === 'Selecione uma opção' && fire(n)) return true;
+                }
+            }
+            for (const c of el.children || []) { if (walk(c, depth + 1)) return true; }
+            return false;
+        };
+        return walk(root, 0);
+    }"""
+    try:
+        return bool(escopo.evaluate(script))
+    except Exception:
+        return False
+
+
 def _clicar_tabela_via_js(escopo: "Page | Locator") -> bool:
     """Usa evaluate para encontrar e clicar no dropdown Tabela (contorna componentes customizados)."""
     script = """(root) => {
+        const fire = (el) => { if (!el || !el.offsetParent) return false; el.focus(); el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true })); el.dispatchEvent(new MouseEvent('click', { bubbles: true })); return true; };
         const walk = (el, depth) => {
             if (!el || depth > 20) return null;
             const txt = (el.textContent || '').trim();
@@ -239,29 +424,26 @@ def _clicar_tabela_via_js(escopo: "Page | Locator") -> bool:
                 let p = el.parentElement;
                 for (let i = 0; i < 10 && p; i++) {
                     const cb = p.querySelector('[role="combobox"], [aria-haspopup="listbox"], .MuiSelect-select, .MuiAutocomplete-input');
-                    if (cb && cb.offsetParent) { cb.click(); return true; }
+                    if (cb && cb.offsetParent) { if (fire(cb)) return true; cb.click(); return true; }
                     const sel = p.querySelector('select');
                     if (sel && sel.offsetParent) { sel.click(); return true; }
                     const ph = p.querySelector('[class*="placeholder"], [class*="Placeholder"], [class*="select"]');
-                    if (ph && (ph.textContent || '').includes('Selecione') && ph.offsetParent) { ph.click(); return true; }
+                    if (ph && (ph.textContent || '').includes('Selecione') && ph.offsetParent) { if (fire(ph)) return true; ph.click(); return true; }
                     const divs = p.querySelectorAll('div[role="button"], div[tabindex="0"], span[role="button"], button');
                     for (const d of divs) {
-                        if ((d.textContent || '').includes('Selecione uma opção') && d.offsetParent) { d.click(); return true; }
+                        if ((d.textContent || '').includes('Selecione uma opção') && d.offsetParent) { if (fire(d)) return true; d.click(); return true; }
                     }
                     const anyWithPlaceholder = p.querySelectorAll('div, span');
-                    for (const el of anyWithPlaceholder) {
-                        if ((el.textContent || '').trim() === 'Selecione uma opção' && el.offsetParent && !el.querySelector('[role="combobox"]')) {
-                            el.click(); return true;
+                    for (const node of anyWithPlaceholder) {
+                        if ((node.textContent || '').trim() === 'Selecione uma opção' && node.offsetParent && !node.querySelector('[role="combobox"]')) {
+                            if (fire(node)) return true; node.click(); return true;
                         }
                     }
                     p = p.parentElement;
                 }
                 return null;
             }
-            for (const c of el.children || []) {
-                const r = walk(c, depth + 1);
-                if (r !== null) return r;
-            }
+            for (const c of el.children || []) { const r = walk(c, depth + 1); if (r !== null) return r; }
             return null;
         };
         return walk(root, 0) === true;
@@ -277,6 +459,7 @@ def _clicar_tabela_via_js_pagina(pagina: "Page | Locator") -> bool:
     """Busca o bloco de simulação pela página (Valor máximo da parcela) e clica no dropdown Tabela."""
     try:
         ok = pagina.evaluate("""() => {
+            const fire = (el) => { if (!el || !el.offsetParent) return false; el.focus(); el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true })); el.dispatchEvent(new MouseEvent('click', { bubbles: true })); return true; };
             const findBlock = (el, depth) => {
                 if (!el || depth > 25) return null;
                 if ((el.textContent || '').includes('Valor máximo da parcela') && (el.textContent || '').includes('Tabela')) {
@@ -286,10 +469,10 @@ def _clicar_tabela_via_js_pagina(pagina: "Page | Locator") -> bool:
                             let p = n.parentElement;
                             for (let i = 0; i < 10 && p; i++) {
                                 const cb = p.querySelector('[role="combobox"], [aria-haspopup="listbox"], .MuiSelect-select, select');
-                                if (cb && cb.offsetParent) { cb.click(); return true; }
+                                if (cb && cb.offsetParent) { if (fire(cb)) return true; cb.click(); return true; }
                                 const any = p.querySelectorAll('div, span, button');
                                 for (const a of any) {
-                                    if ((a.textContent || '').trim() === 'Selecione uma opção' && a.offsetParent) { a.click(); return true; }
+                                    if ((a.textContent || '').trim() === 'Selecione uma opção' && a.offsetParent) { if (fire(a)) return true; a.click(); return true; }
                                 }
                                 p = p.parentElement;
                             }
@@ -356,7 +539,13 @@ def simular_tabelas(
     banco_atual: str,
     lista_saida: list,
     pagina_resultado: "Page | None" = None,
+    on_abrir_tabela: Optional[Callable[[bool, str], None]] = None,
 ) -> bool:
+    """
+    Para cada mês (6, 12, 24): abre o dropdown Tabela (Selecione uma opção), escolhe o mês, clica Simular e grava.
+    Ordem: _abrir_tabela_clique_e_enter, _disparar_clique_real_tabela, LOCATOR_TABELA_DROPDOWN, _abrir_tabela_por_teclado,
+    _clicar_tabela_via_js, _clicar_tabela_via_js_pagina. Só considera aberto se opções ficarem visíveis (timeout 800 ms).
+    """
     pagina_ui: "Page | Locator" = pagina_resultado if pagina_resultado is not None else escopo
     timeout_bloco = getattr(config, "TIMEOUT_ESPERA_BLOCO_SIMULACAO_MS", 10000)
     try:
@@ -380,6 +569,8 @@ def simular_tabelas(
         variantes_por_mes = {6: ["6 meses (C)", "6 meses"], 12: ["12 meses (C)", "12 meses"], 24: ["24 meses (C)", "24 meses"]}
     pausa_dropdown = getattr(config, "PAUSA_APOS_ABRIR_DROPDOWN_TABELA_MS", 600)
     timeout_opcao = getattr(config, "TIMEOUT_OPCAO_TABELA_MS", 2500)
+    timeout_validacao_ms = getattr(config, "TIMEOUT_VALIDACAO_OPCOES_TABELA_MS", 800)
+    timeout_opcoes_visiveis = min(1500, timeout_opcao)
     gravou_alguma = False
     for _meses, label_tabela in opcoes_com_meses:
         linha_status = "falha_simulacao"
@@ -388,81 +579,158 @@ def simular_tabelas(
         valor_total = ""
         qtd_parcelas = str(_meses)
         erro_linha = ""
+        trigger_aberto = False
+        opcao_clicada = False
         try:
-            trigger_aberto = False
-            locator_tabela_custom = getattr(config, "LOCATOR_TABELA_DROPDOWN", None)
-            if locator_tabela_custom and isinstance(locator_tabela_custom, str):
-                try:
-                    el = escopo.locator(locator_tabela_custom).first
-                    if el.count() > 0:
-                        el.scroll_into_view_if_needed(timeout=2000)
-                        el.click(force=True, timeout=2000)
-                        trigger_aberto = True
-                except Exception:
-                    try:
-                        pagina_ui.locator(locator_tabela_custom).first.click(force=True, timeout=2000)
-                        trigger_aberto = True
-                    except Exception:
-                        pass
-            if not trigger_aberto and _abrir_tabela_por_teclado(pagina_ui, escopo):
-                trigger_aberto = True
-            if not trigger_aberto and _clicar_tabela_via_js(escopo):
-                trigger_aberto = True
-            if not trigger_aberto and pagina_resultado is not None and _clicar_tabela_via_js_pagina(pagina_resultado):
-                trigger_aberto = True
             wait_fn = getattr(pagina_ui, "wait_for_timeout", None)
-            if wait_fn is not None:
-                wait_fn(pausa_dropdown)
-            opcao_clicada = False
-            labels_tentar = variantes_por_mes.get(_meses, [label_tabela])
-            if label_tabela not in labels_tentar:
-                labels_tentar = [label_tabela] + list(labels_tentar)
-            for lbl_opcao in labels_tentar:
-                if opcao_clicada:
-                    break
-                try:
-                    opt_portal = pagina_ui.locator(".vue-portal-target").get_by_text(lbl_opcao, exact=False).first
-                    if opt_portal.count() > 0 and opt_portal.is_visible():
-                        opt_portal.click(timeout=timeout_opcao)
-                        opcao_clicada = True
-                except Exception:
-                    pass
-                if not opcao_clicada:
-                    try:
-                        opt = pagina_ui.get_by_role("option").filter(has_text=re.compile(re.escape(lbl_opcao), re.I)).first
-                        if opt.count() > 0:
-                            opt.wait_for(state="visible", timeout=min(1500, timeout_opcao))
-                            opt.click(timeout=timeout_opcao)
-                            opcao_clicada = True
-                    except Exception:
-                        pass
-                if not opcao_clicada:
-                    try:
-                        sel = escopo.get_by_label(config.UI_LABEL_TABELA)
-                        if sel.count() > 0:
-                            sel.select_option(label=lbl_opcao, timeout=timeout_opcao)
-                            opcao_clicada = True
-                    except Exception:
-                        pass
-                if not opcao_clicada:
-                    try:
-                        loc = escopo.get_by_text(lbl_opcao, exact=True).first
-                        if loc.count() > 0:
-                            loc.wait_for(state="visible", timeout=min(1500, timeout_opcao))
-                            loc.click(timeout=timeout_opcao)
-                            opcao_clicada = True
-                    except Exception:
-                        pass
-                if not opcao_clicada:
-                    try:
-                        loc = pagina_ui.locator(f'[role="option"]:has-text("{lbl_opcao}"), div:has-text("{lbl_opcao}"), li:has-text("{lbl_opcao}")').first
-                        if loc.count() > 0 and loc.is_visible():
-                            loc.click(timeout=timeout_opcao)
-                            opcao_clicada = True
-                    except Exception:
-                        pass
+            if _selecionar_tabela_select_nativo(escopo, _meses, label_tabela, timeout_opcao):
+                opcao_clicada = True
             if not opcao_clicada:
-                opcao_clicada = _clicar_por_texto(pagina_ui, label_tabela, exato=True) or _clicar_por_texto(pagina_ui, label_tabela)
+                if _abrir_tabela_clique_e_enter(escopo, pagina_ui):
+                    if wait_fn:
+                        wait_fn(350)
+                    if _opcoes_dropdown_visiveis(pagina_ui, label_tabela, timeout_validacao_ms):
+                        trigger_aberto = True
+                        if on_abrir_tabela:
+                            on_abrir_tabela(True, "clique_e_enter")
+                        if getattr(config, "DEBUG_TABELA", False):
+                            print("[DEBUG_TABELA] aberta=True metodo=clique_e_enter")
+                if not trigger_aberto and _disparar_clique_real_tabela(escopo):
+                    if wait_fn:
+                        wait_fn(350)
+                    if _opcoes_dropdown_visiveis(pagina_ui, label_tabela, timeout_validacao_ms):
+                        trigger_aberto = True
+                        if on_abrir_tabela:
+                            on_abrir_tabela(True, "disparar_clique_real_escopo")
+                        if getattr(config, "DEBUG_TABELA", False):
+                            print("[DEBUG_TABELA] aberta=True metodo=disparar_clique_real_escopo")
+                if not trigger_aberto and pagina_resultado is not None and _disparar_clique_real_tabela(pagina_resultado):
+                    if wait_fn:
+                        wait_fn(350)
+                    if _opcoes_dropdown_visiveis(pagina_ui, label_tabela, timeout_validacao_ms):
+                        trigger_aberto = True
+                        if on_abrir_tabela:
+                            on_abrir_tabela(True, "disparar_clique_real_pagina")
+                        if getattr(config, "DEBUG_TABELA", False):
+                            print("[DEBUG_TABELA] aberta=True metodo=disparar_clique_real_pagina")
+                locator_tabela_custom = getattr(config, "LOCATOR_TABELA_DROPDOWN", None)
+                if not trigger_aberto and locator_tabela_custom and isinstance(locator_tabela_custom, str):
+                    try:
+                        el = escopo.locator(locator_tabela_custom).first
+                        if el.count() > 0:
+                            el.scroll_into_view_if_needed(timeout=2000)
+                            el.click(force=True, timeout=2000)
+                            if wait_fn:
+                                wait_fn(350)
+                            if _opcoes_dropdown_visiveis(pagina_ui, label_tabela, timeout_validacao_ms):
+                                trigger_aberto = True
+                                if on_abrir_tabela:
+                                    on_abrir_tabela(True, "locator_custom")
+                                if getattr(config, "DEBUG_TABELA", False):
+                                    print("[DEBUG_TABELA] aberta=True metodo=locator_custom")
+                    except Exception:
+                        try:
+                            pagina_ui.locator(locator_tabela_custom).first.click(force=True, timeout=2000)
+                            if wait_fn:
+                                wait_fn(350)
+                            if _opcoes_dropdown_visiveis(pagina_ui, label_tabela, timeout_validacao_ms):
+                                trigger_aberto = True
+                                if on_abrir_tabela:
+                                    on_abrir_tabela(True, "locator_custom_pagina")
+                                if getattr(config, "DEBUG_TABELA", False):
+                                    print("[DEBUG_TABELA] aberta=True metodo=locator_custom_pagina")
+                        except Exception:
+                            pass
+                if not trigger_aberto and _abrir_tabela_por_teclado(pagina_ui, escopo):
+                    if wait_fn:
+                        wait_fn(350)
+                    if _opcoes_dropdown_visiveis(pagina_ui, label_tabela, timeout_validacao_ms):
+                        trigger_aberto = True
+                        if on_abrir_tabela:
+                            on_abrir_tabela(True, "teclado")
+                        if getattr(config, "DEBUG_TABELA", False):
+                            print("[DEBUG_TABELA] aberta=True metodo=teclado")
+                if not trigger_aberto and _clicar_tabela_via_js(escopo):
+                    if wait_fn:
+                        wait_fn(350)
+                    if _opcoes_dropdown_visiveis(pagina_ui, label_tabela, timeout_validacao_ms):
+                        trigger_aberto = True
+                        if on_abrir_tabela:
+                            on_abrir_tabela(True, "clicar_js_escopo")
+                        if getattr(config, "DEBUG_TABELA", False):
+                            print("[DEBUG_TABELA] aberta=True metodo=clicar_js_escopo")
+                if not trigger_aberto and pagina_resultado is not None and _clicar_tabela_via_js_pagina(pagina_resultado):
+                    if wait_fn:
+                        wait_fn(350)
+                    if _opcoes_dropdown_visiveis(pagina_ui, label_tabela, timeout_validacao_ms):
+                        trigger_aberto = True
+                        if on_abrir_tabela:
+                            on_abrir_tabela(True, "clicar_js_pagina")
+                        if getattr(config, "DEBUG_TABELA", False):
+                            print("[DEBUG_TABELA] aberta=True metodo=clicar_js_pagina")
+                if not trigger_aberto:
+                    if on_abrir_tabela:
+                        on_abrir_tabela(False, "nenhum_metodo_abriu")
+                    if getattr(config, "DEBUG_TABELA", False):
+                        print("[DEBUG_TABELA] aberta=False metodo=nenhum_metodo_abriu")
+                    continue
+                if wait_fn:
+                    wait_fn(pausa_dropdown)
+                opcoes_visiveis = False
+                try:
+                    pagina_ui.locator(".vue-portal-target").get_by_text(label_tabela, exact=False).first.wait_for(state="visible", timeout=timeout_opcoes_visiveis)
+                    opcoes_visiveis = True
+                except Exception:
+                    try:
+                        pagina_ui.get_by_role("option").first.wait_for(state="visible", timeout=timeout_opcoes_visiveis)
+                        opcoes_visiveis = True
+                    except Exception:
+                        pass
+                if not opcoes_visiveis:
+                    if on_abrir_tabela:
+                        on_abrir_tabela(False, "opcoes_nao_apareceram")
+                    if getattr(config, "DEBUG_TABELA", False):
+                        print("[DEBUG_TABELA] opcoes_nao_apareceram timeout=" + str(timeout_opcoes_visiveis))
+                    continue
+                opcao_clicada = False
+                labels_tentar = variantes_por_mes.get(_meses, [label_tabela])
+                if label_tabela not in labels_tentar:
+                    labels_tentar = [label_tabela] + list(labels_tentar)
+                for lbl_opcao in labels_tentar:
+                    if opcao_clicada:
+                        break
+                    try:
+                        opt_portal = pagina_ui.locator(".vue-portal-target").get_by_text(lbl_opcao, exact=False).first
+                        if opt_portal.count() > 0 and opt_portal.is_visible():
+                            opt_portal.click(timeout=timeout_opcao)
+                            opcao_clicada = True
+                    except Exception:
+                        pass
+                    if not opcao_clicada:
+                        try:
+                            opt = pagina_ui.get_by_role("option").filter(has_text=re.compile(re.escape(lbl_opcao), re.I)).first
+                            if opt.count() > 0:
+                                opt.wait_for(state="visible", timeout=min(1500, timeout_opcao))
+                                opt.click(timeout=timeout_opcao)
+                                opcao_clicada = True
+                        except Exception:
+                            pass
+                    if not opcao_clicada:
+                        try:
+                            sel = escopo.get_by_label(config.UI_LABEL_TABELA)
+                            if sel.count() > 0:
+                                sel.select_option(label=lbl_opcao, timeout=timeout_opcao)
+                                opcao_clicada = True
+                        except Exception:
+                            pass
+                    if not opcao_clicada:
+                        try:
+                            loc_portal = pagina_ui.locator(".vue-portal-target").get_by_text(lbl_opcao, exact=True).first
+                            if loc_portal.count() > 0 and loc_portal.is_visible():
+                                loc_portal.click(timeout=timeout_opcao)
+                                opcao_clicada = True
+                        except Exception:
+                            pass
             if not opcao_clicada:
                 continue
             try:
@@ -479,7 +747,10 @@ def simular_tabelas(
                 try:
                     escopo.get_by_text(config.UI_TEXTO_ENTENDA_ENCARGOS, exact=False).first.wait_for(state="visible", timeout=3000)
                 except Exception:
-                    pass
+                    try:
+                        escopo.get_by_text(config.UI_TEXTO_VALOR_MAIOR_DISPONIVEL, exact=False).first.wait_for(state="visible", timeout=3000)
+                    except Exception:
+                        pass
             msg_maior = escopo.get_by_text(config.UI_TEXTO_VALOR_MAIOR_DISPONIVEL, exact=False).first
             tentou_valor_total = False
             try:
@@ -540,7 +811,9 @@ def simular_tabelas(
             erro_linha = str(e).replace("\n", " ").replace("\r", "")[:500]
         valor_min = getattr(config, "VALOR_MINIMO_PARCELA_SIMULAR", None)
         gravar_linha = True
-        if valor_min is not None and valor_min > 0:
+        if linha_status == "valor_maior_que_disponivel":
+            gravar_linha = True
+        elif valor_min is not None and valor_min > 0:
             try:
                 vp = float(valor_parcela) if valor_parcela else 0.0
                 vl = float(valor_liberado) if valor_liberado else 0.0
