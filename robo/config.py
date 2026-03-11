@@ -44,26 +44,16 @@ FORMATO_DATA_CSV = "%Y%m%d_%H%M%S"
 CSV_DELIMITER = ";"
 CSV_ENCODING = "utf-8"
 CSV_COLUNAS_SAIDA = [
-    "nome",
-    "cpf",
-    "contato",
-    "email",
-    "banco",
-    "valor_maximo_parcela",
-    "qtd_parcelas",
-    "valor_liberado",
-    "valor_parcela",
-    "valor_total",
-    "status",
-    "erro",
+    "nome", "cpf", "contato", "email", "banco", "valor_esperado", "valor_liberado", "valor_parcela", "qtd_parcelas",
+    "valor_maximo_parcela", "", "valor_total", "status", "erro",
 ]
 CSV_COLUNAS_SAIDA_AGREGADO = [
-    "nome", "cpf", "contato", "email", "banco", "valor_maximo_parcela",
+    "nome", "cpf", "contato", "email", "banco", "valor_maximo_parcela", "valor_esperado",
     "valor_parcela_6m", "valor_parcela_12m", "valor_parcela_18m", "valor_parcela_24m",
     "valor_liberado_6m", "valor_liberado_12m", "valor_liberado_18m", "valor_liberado_24m",
     "valor_total_6m", "valor_total_12m", "valor_total_18m", "valor_total_24m",
     "status_6m", "status_12m", "status_18m", "status_24m",
-    "status", "erro",
+    "limite_meses", "status", "erro",
 ]
 
 # Textos de UI (seletores)
@@ -112,14 +102,18 @@ UI_LABEL_TABELA = "Tabela"
 UI_PLACEHOLDER_TABELA = "Selecione uma opção"
 # Dropdown Tabela: estrutura Vue (tr.expanded-row > .simulation / .simulation-table)
 LOCATOR_TABELA_DROPDOWN = ".simulation [role='combobox'], .simulation-table [role='combobox'], .simulation select, .simulation-table select"
-UI_TABELA_VARIANTES_MESES = {6: ["6 meses (C)", "6 meses"], 12: ["12 meses (C)", "12 meses"], 24: ["24 meses (C)", "24 meses"]}
+UI_TABELA_VARIANTES_MESES = {6: ["6 meses (C)", "6 meses"], 12: ["12 meses (C)", "12 meses"], 18: ["18 meses (C)", "18 meses"], 24: ["24 meses (C)", "24 meses"]}
+UI_TEXTO_ERRO_MARGEM_SIMULACAO = "Não foi possível encontrar a margem total para simulação, por favor, refaça a obtenção de saldo"
+UI_TEXTO_LIMITE_OPCOES_MESES = "Limite de opções de meses alcançado"
 TIMEOUT_ESPERA_BLOCO_SIMULACAO_MS = 10000
 UI_LABEL_TIPO = "Tipo"
 UI_OPCAO_VALOR_PARCELA = "Valor da parcela"
 UI_OPCAO_VALOR_TOTAL = "Valor total"
+UI_OPCAO_VALOR_TOTAL_ALT = "Valor Total"
 UI_BOTAO_SIMULAR = "Simular"
 UI_TEXTO_VALOR_MAIOR_DISPONIVEL = "O valor desejado é maior que o disponível"
 UI_TEXTO_VALOR_LIBERADO = "Valor Liberado"
+UI_TEXTO_VALOR_LIBERADO_ALT = "Liberado"
 UI_TEXTO_ENTENDA_ENCARGOS = "Entenda os encargos"
 UI_TEXTO_TOTAL = "Total"
 UI_TEXTO_PARCELAS_X_RS = "x R$"

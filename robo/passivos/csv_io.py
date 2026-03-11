@@ -42,7 +42,7 @@ def log_critico(lista_saida: list, cliente: Cliente, banco: str, status: str, er
     print(f"[{status}] CPF={cliente.cpf} BANCO={banco} ERRO={erro}")
     lista_saida.append({
         "nome": cliente.nome, "cpf": cliente.cpf, "contato": cliente.contato, "email": cliente.email,
-        "banco": banco, "valor_maximo_parcela": "", "qtd_parcelas": "", "valor_liberado": "", "valor_parcela": "",
+        "banco": banco, "valor_maximo_parcela": "", "valor_esperado": "", "qtd_parcelas": "", "valor_liberado": "", "valor_parcela": "",
         "valor_total": "", "status": status, "erro": erro[:500], "tipo": "erro",
     })
 
@@ -51,40 +51,21 @@ def salvar_dataframe_final(caminho_saida: str, lista_saida: list) -> None:
     dir_saida = os.path.dirname(caminho_saida)
     if dir_saida:
         garantir_pasta_saida(dir_saida)
-    parcelas = [r for r in lista_saida if r.get("tipo") != "erro" and str(r.get("qtd_parcelas", "")).strip() in ("6", "12", "18", "24")]
-    erros = [r for r in lista_saida if r.get("tipo") == "erro"]
-    linhas_agregadas: list[dict] = []
-    contagem = {"6": 0, "12": 0, "18": 0, "24": 0}
-    if parcelas:
-        df_parc = pd.DataFrame(parcelas)
-        for (nome, cpf, contato, email, banco, valor_max), grp in df_parc.groupby(["nome", "cpf", "contato", "email", "banco", "valor_maximo_parcela"]):
-            row: dict = {"nome": nome, "cpf": cpf, "contato": contato, "email": email, "banco": banco, "valor_maximo_parcela": valor_max}
-            for m in ("6", "12", "18", "24"):
-                sub = grp[grp["qtd_parcelas"] == m]
-                if not sub.empty:
-                    s = sub.iloc[0]
-                    row[f"valor_parcela_{m}m"] = s.get("valor_parcela", "")
-                    row[f"valor_liberado_{m}m"] = s.get("valor_liberado", "")
-                    row[f"valor_total_{m}m"] = s.get("valor_total", "")
-                    row[f"status_{m}m"] = s.get("status", "")
-                    contagem[m] += 1
-                else:
-                    row[f"valor_parcela_{m}m"] = row[f"valor_liberado_{m}m"] = row[f"valor_total_{m}m"] = row[f"status_{m}m"] = ""
-            row["status"] = ""
-            row["erro"] = ""
-            linhas_agregadas.append(row)
-    for r in erros:
-        linhas_agregadas.append({
-            "nome": r["nome"], "cpf": r["cpf"], "contato": r["contato"], "email": r["email"], "banco": r["banco"],
-            "valor_maximo_parcela": "", "valor_parcela_6m": "", "valor_parcela_12m": "", "valor_parcela_18m": "", "valor_parcela_24m": "",
-            "valor_liberado_6m": "", "valor_liberado_12m": "", "valor_liberado_18m": "", "valor_liberado_24m": "",
-            "valor_total_6m": "", "valor_total_12m": "", "valor_total_18m": "", "valor_total_24m": "",
-            "status_6m": "", "status_12m": "", "status_18m": "", "status_24m": "",
-            "status": r["status"], "erro": r["erro"],
-        })
-    df_final = pd.DataFrame(linhas_agregadas, columns=config.CSV_COLUNAS_SAIDA_AGREGADO)
-    df_final.to_csv(caminho_saida, sep=config.CSV_DELIMITER, index=False, encoding=config.CSV_ENCODING)
-    print(f"Parcelas contabilizadas: 6m={contagem['6']} | 12m={contagem['12']} | 18m={contagem['18']} | 24m={contagem['24']}")
+    colunas = config.CSV_COLUNAS_SAIDA
+    linhas_csv: list[dict] = []
+    for r in lista_saida:
+        if r.get("tipo") not in ("parcela", "limite_meses", "erro"):
+            continue
+        row = {}
+        for c in colunas:
+            v = r.get(c, "")
+            row[c] = "" if v is None else str(v).strip()
+        linhas_csv.append(row)
+    if linhas_csv:
+        df_final = pd.DataFrame(linhas_csv, columns=colunas)
+        df_final.to_csv(caminho_saida, sep=config.CSV_DELIMITER, index=False, encoding=config.CSV_ENCODING)
+    contagem = sum(1 for r in lista_saida if r.get("tipo") == "parcela")
+    print(f"Linhas gravadas: {len(linhas_csv)} (parcelas: {contagem})")
 
 
 def ler_clientes(caminho_csv: str) -> List[Cliente]:

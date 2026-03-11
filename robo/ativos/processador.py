@@ -814,6 +814,7 @@ def processar_clientes(page: Page, clientes: Iterable[Cliente], caminho_saida: s
                     navegacao.voltar_para_consulta_limpa(page)
                     continue
                 gravou_alguma_linha_simulacao = False
+                simulacao_foi_tentada = False
                 if pagina_resultado is not None and linha_cpf is not None:
                     try:
                         if not pagina_resultado.is_closed():
@@ -860,7 +861,9 @@ def processar_clientes(page: Page, clientes: Iterable[Cliente], caminho_saida: s
                             pass
                         def _cb_tabela(aberto: bool, metodo: str) -> None:
                             print(f"[Tabela] aberta={aberto} metodo={metodo}")
-                        gravou_alguma_linha_simulacao = historico.simular_tabelas(escopo_simulacao, valor_maximo_parcela, cliente, banco_atual, lista_saida, pagina_resultado, on_abrir_tabela=_cb_tabela)
+                        res = historico.simular_tabelas(escopo_simulacao, valor_maximo_parcela, cliente, banco_atual, lista_saida, pagina_resultado, on_abrir_tabela=_cb_tabela)
+                        gravou_alguma_linha_simulacao = res[0] if isinstance(res, tuple) else res
+                        simulacao_foi_tentada = res[1] if isinstance(res, tuple) and len(res) > 1 else gravou_alguma_linha_simulacao
                     except Exception:
                         try:
                             v_fallback = valor_maximo_parcela
@@ -868,10 +871,12 @@ def processar_clientes(page: Page, clientes: Iterable[Cliente], caminho_saida: s
                                 v_fallback = historico.extrair_valor_maximo_parcela(pagina_resultado)
                             def _cb_tabela_fb(aberto: bool, metodo: str) -> None:
                                 print(f"[Tabela fallback] aberta={aberto} metodo={metodo}")
-                            gravou_alguma_linha_simulacao = historico.simular_tabelas(pagina_resultado, v_fallback, cliente, banco_atual, lista_saida, pagina_resultado, on_abrir_tabela=_cb_tabela_fb)
+                            res = historico.simular_tabelas(pagina_resultado, v_fallback, cliente, banco_atual, lista_saida, pagina_resultado, on_abrir_tabela=_cb_tabela_fb)
+                            gravou_alguma_linha_simulacao = res[0] if isinstance(res, tuple) else res
+                            simulacao_foi_tentada = res[1] if isinstance(res, tuple) and len(res) > 1 else gravou_alguma_linha_simulacao
                         except Exception:
-                            pass
-                if valor_maximo_parcela and not gravou_alguma_linha_simulacao:
+                            simulacao_foi_tentada = False
+                if valor_maximo_parcela and not simulacao_foi_tentada:
                     status_sem_sim = getattr(config, "STATUS_CONSULTA_SEM_SIMULACAO", "consulta_ok_sem_simulacao")
                     erro_sem_sim = getattr(config, "ERRO_SIMULACAO_NAO_REALIZADA", "Simulação não realizada (Tabela não preenchida ou sem opções).")
                     csv_io.log_critico(lista_saida, cliente, banco_atual, status_sem_sim, erro_sem_sim)

@@ -35,7 +35,7 @@ def _opcoes_dropdown_visiveis(pagina_ui: "Page | Locator", label_tabela: str, ti
     return False
 
 
-def _selecionar_tabela_select_nativo(escopo: "Page | Locator", meses: int, label_opcao: str, timeout_ms: int = 2500) -> bool:
+def _selecionar_tabela_select_nativo(escopo: "Page | Locator", meses: int, label_opcao: str, timeout_ms: int = 2500, banco_atual: str = "") -> bool:
     """Se o bloco Tabela for um <select> nativo (ex.: span com label Tabela > div.select > select), seleciona por value ou label.
     Usa select_option + dispatch input/change; fallback com clique no select + teclado (ArrowDown + Enter) para Vue reconhecer."""
     label_tabela = getattr(config, "UI_LABEL_TABELA", "Tabela")
@@ -52,7 +52,7 @@ def _selecionar_tabela_select_nativo(escopo: "Page | Locator", meses: int, label
                 selects = escopo.locator("select").all()
                 for s in selects:
                     if s.count() > 0 and s.is_visible():
-                        opt = s.locator("option[value='65'], option[value='66'], option[value='68']").first
+                        opt = s.locator("option[value='65'], option[value='66'], option[value='67'], option[value='68']").first
                         if opt.count() > 0:
                             sel = s
                             break
@@ -62,6 +62,10 @@ def _selecionar_tabela_select_nativo(escopo: "Page | Locator", meses: int, label
             sel = escopo.locator("select").nth(1)
         if sel.count() == 0:
             return False
+        is_celcoin = "celcoin" in (banco_atual or "").lower()
+        if is_celcoin:
+            return False
+        page = _get_page(escopo)
         value_map = {6: "65", 12: "66", 18: "67", 24: "68"}
         val = value_map.get(meses)
         try:
@@ -90,7 +94,6 @@ def _selecionar_tabela_select_nativo(escopo: "Page | Locator", meses: int, label
             sel.evaluate("el => { el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }")
         except Exception:
             pass
-        page = _get_page(escopo)
         if page is not None:
             try:
                 try:
@@ -101,13 +104,13 @@ def _selecionar_tabela_select_nativo(escopo: "Page | Locator", meses: int, label
                         sel.click(timeout=timeout_ms)
                 except Exception:
                     sel.click(timeout=timeout_ms)
-                page.wait_for_timeout(150)
-                arrow_count = {24: 0, 18: 1, 12: 2, 6: 3}.get(meses, 0)
+                page.wait_for_timeout(80)
+                arrow_count = {24: 1, 18: 2, 12: 3, 6: 4}.get(meses, 0)
                 for _ in range(arrow_count):
                     page.keyboard.press("ArrowDown")
-                    page.wait_for_timeout(40)
+                    page.wait_for_timeout(30)
                 page.keyboard.press("Enter")
-                page.wait_for_timeout(80)
+                page.wait_for_timeout(50)
             except Exception:
                 pass
         return True
@@ -121,6 +124,18 @@ def _abrir_tabela_clique_e_enter(escopo: "Page | Locator", pagina_ui: "Page | Lo
     if page is None:
         return False
     ph = getattr(config, "UI_PLACEHOLDER_TABELA", "Selecione uma opção")
+    label_tabela = getattr(config, "UI_LABEL_TABELA", "Tabela")
+    try:
+        bloco_tabela = escopo.locator("div, span, section").filter(has=escopo.get_by_text(label_tabela, exact=False)).first
+        if bloco_tabela.count() > 0 and bloco_tabela.is_visible():
+            el = bloco_tabela.get_by_text(ph, exact=True).first
+            if el.count() > 0 and el.is_visible():
+                el.click(timeout=2000)
+                page.wait_for_timeout(200)
+                page.keyboard.press("Enter")
+                return True
+    except Exception:
+        pass
     try:
         el = escopo.get_by_text(ph, exact=True).first
         if el.count() > 0 and el.is_visible():
@@ -540,9 +555,9 @@ def simular_tabelas(
     lista_saida: list,
     pagina_resultado: "Page | None" = None,
     on_abrir_tabela: Optional[Callable[[bool, str], None]] = None,
-) -> bool:
+) -> tuple[bool, bool]:
     """
-    Para cada mês (6, 12, 24): abre o dropdown Tabela (Selecione uma opção), escolhe o mês, clica Simular e grava.
+    Para cada mês (6, 12, 18, 24) de baixo para cima: abre o dropdown Tabela, escolhe o mês, clica Simular e grava; ao final grava "Limite de opções de meses alcançado".
     Ordem: _abrir_tabela_clique_e_enter, _disparar_clique_real_tabela, LOCATOR_TABELA_DROPDOWN, _abrir_tabela_por_teclado,
     _clicar_tabela_via_js, _clicar_tabela_via_js_pagina. Só considera aberto se opções ficarem visíveis (timeout 800 ms).
     """
@@ -556,9 +571,9 @@ def simular_tabelas(
         except Exception:
             pass
     escopo = _obter_escopo_simulacao(escopo)
-    meses_array = [6, 12, 24]
-    labels_celcoin = ["6 meses (C)", "12 meses (C)", "24 meses (C)"]
-    labels_qitech = ["6 meses", "12 meses", "24 meses"]
+    meses_array = [6, 12, 18, 24]
+    labels_celcoin = ["6 meses (C)", "12 meses (C)", "18 meses (C)", "24 meses (C)"]
+    labels_qitech = ["6 meses", "12 meses", "18 meses", "24 meses"]
     is_celcoin = "celcoin" in (banco_atual or "").lower()
     opcoes_com_meses = [
         (meses_array[i], labels_celcoin[i] if is_celcoin else labels_qitech[i])
@@ -566,12 +581,13 @@ def simular_tabelas(
     ]
     variantes_por_mes = getattr(config, "UI_TABELA_VARIANTES_MESES", None)
     if variantes_por_mes is None:
-        variantes_por_mes = {6: ["6 meses (C)", "6 meses"], 12: ["12 meses (C)", "12 meses"], 24: ["24 meses (C)", "24 meses"]}
+        variantes_por_mes = {6: ["6 meses (C)", "6 meses"], 12: ["12 meses (C)", "12 meses"], 18: ["18 meses (C)", "18 meses"], 24: ["24 meses (C)", "24 meses"]}
     pausa_dropdown = getattr(config, "PAUSA_APOS_ABRIR_DROPDOWN_TABELA_MS", 600)
     timeout_opcao = getattr(config, "TIMEOUT_OPCAO_TABELA_MS", 2500)
     timeout_validacao_ms = getattr(config, "TIMEOUT_VALIDACAO_OPCOES_TABELA_MS", 800)
     timeout_opcoes_visiveis = min(1500, timeout_opcao)
     gravou_alguma = False
+    alguma_vez_opcao_clicada = False
     for _meses, label_tabela in opcoes_com_meses:
         linha_status = "falha_simulacao"
         valor_liberado = ""
@@ -583,12 +599,12 @@ def simular_tabelas(
         opcao_clicada = False
         try:
             wait_fn = getattr(pagina_ui, "wait_for_timeout", None)
-            if _selecionar_tabela_select_nativo(escopo, _meses, label_tabela, timeout_opcao):
+            if _selecionar_tabela_select_nativo(escopo, _meses, label_tabela, timeout_opcao, banco_atual):
                 opcao_clicada = True
             if not opcao_clicada:
                 if _abrir_tabela_clique_e_enter(escopo, pagina_ui):
                     if wait_fn:
-                        wait_fn(350)
+                        wait_fn(250)
                     if _opcoes_dropdown_visiveis(pagina_ui, label_tabela, timeout_validacao_ms):
                         trigger_aberto = True
                         if on_abrir_tabela:
@@ -597,7 +613,7 @@ def simular_tabelas(
                             print("[DEBUG_TABELA] aberta=True metodo=clique_e_enter")
                 if not trigger_aberto and _disparar_clique_real_tabela(escopo):
                     if wait_fn:
-                        wait_fn(350)
+                        wait_fn(250)
                     if _opcoes_dropdown_visiveis(pagina_ui, label_tabela, timeout_validacao_ms):
                         trigger_aberto = True
                         if on_abrir_tabela:
@@ -606,7 +622,7 @@ def simular_tabelas(
                             print("[DEBUG_TABELA] aberta=True metodo=disparar_clique_real_escopo")
                 if not trigger_aberto and pagina_resultado is not None and _disparar_clique_real_tabela(pagina_resultado):
                     if wait_fn:
-                        wait_fn(350)
+                        wait_fn(250)
                     if _opcoes_dropdown_visiveis(pagina_ui, label_tabela, timeout_validacao_ms):
                         trigger_aberto = True
                         if on_abrir_tabela:
@@ -621,7 +637,7 @@ def simular_tabelas(
                             el.scroll_into_view_if_needed(timeout=2000)
                             el.click(force=True, timeout=2000)
                             if wait_fn:
-                                wait_fn(350)
+                                wait_fn(250)
                             if _opcoes_dropdown_visiveis(pagina_ui, label_tabela, timeout_validacao_ms):
                                 trigger_aberto = True
                                 if on_abrir_tabela:
@@ -632,7 +648,7 @@ def simular_tabelas(
                         try:
                             pagina_ui.locator(locator_tabela_custom).first.click(force=True, timeout=2000)
                             if wait_fn:
-                                wait_fn(350)
+                                wait_fn(250)
                             if _opcoes_dropdown_visiveis(pagina_ui, label_tabela, timeout_validacao_ms):
                                 trigger_aberto = True
                                 if on_abrir_tabela:
@@ -643,7 +659,7 @@ def simular_tabelas(
                             pass
                 if not trigger_aberto and _abrir_tabela_por_teclado(pagina_ui, escopo):
                     if wait_fn:
-                        wait_fn(350)
+                        wait_fn(250)
                     if _opcoes_dropdown_visiveis(pagina_ui, label_tabela, timeout_validacao_ms):
                         trigger_aberto = True
                         if on_abrir_tabela:
@@ -652,7 +668,7 @@ def simular_tabelas(
                             print("[DEBUG_TABELA] aberta=True metodo=teclado")
                 if not trigger_aberto and _clicar_tabela_via_js(escopo):
                     if wait_fn:
-                        wait_fn(350)
+                        wait_fn(250)
                     if _opcoes_dropdown_visiveis(pagina_ui, label_tabela, timeout_validacao_ms):
                         trigger_aberto = True
                         if on_abrir_tabela:
@@ -661,7 +677,7 @@ def simular_tabelas(
                             print("[DEBUG_TABELA] aberta=True metodo=clicar_js_escopo")
                 if not trigger_aberto and pagina_resultado is not None and _clicar_tabela_via_js_pagina(pagina_resultado):
                     if wait_fn:
-                        wait_fn(350)
+                        wait_fn(250)
                     if _opcoes_dropdown_visiveis(pagina_ui, label_tabela, timeout_validacao_ms):
                         trigger_aberto = True
                         if on_abrir_tabela:
@@ -733,6 +749,7 @@ def simular_tabelas(
                             pass
             if not opcao_clicada:
                 continue
+            alguma_vez_opcao_clicada = True
             try:
                 escopo.get_by_role("button", name=config.UI_BOTAO_SIMULAR).first.wait_for(state="visible", timeout=1500)
             except Exception:
@@ -750,7 +767,17 @@ def simular_tabelas(
                     try:
                         escopo.get_by_text(config.UI_TEXTO_VALOR_MAIOR_DISPONIVEL, exact=False).first.wait_for(state="visible", timeout=3000)
                     except Exception:
-                        pass
+                        try:
+                            escopo.get_by_text(getattr(config, "UI_TEXTO_ERRO_MARGEM_SIMULACAO", ""), exact=False).first.wait_for(state="visible", timeout=2000)
+                        except Exception:
+                            pass
+            msg_erro_margem = escopo.get_by_text(getattr(config, "UI_TEXTO_ERRO_MARGEM_SIMULACAO", ""), exact=False).first
+            try:
+                if msg_erro_margem.is_visible():
+                    linha_status = "erro_margem_simulacao"
+                    erro_linha = getattr(config, "UI_TEXTO_ERRO_MARGEM_SIMULACAO", "Não foi possível encontrar a margem total para simulação, por favor, refaça a obtenção de saldo")
+            except Exception:
+                pass
             msg_maior = escopo.get_by_text(config.UI_TEXTO_VALOR_MAIOR_DISPONIVEL, exact=False).first
             tentou_valor_total = False
             try:
@@ -758,18 +785,37 @@ def simular_tabelas(
                     linha_status = "valor_maior_que_disponivel"
                     tentou_valor_total = True
                     try:
-                        escopo.get_by_label(config.UI_LABEL_TIPO).select_option(label=config.UI_OPCAO_VALOR_TOTAL)
+                        escopo.get_by_label(config.UI_LABEL_TIPO).click(timeout=2000)
+                        if wait_fn:
+                            wait_fn(250)
                     except Exception:
-                        _clicar_por_texto(pagina_ui, config.UI_LABEL_TIPO)
-                        _clicar_por_texto(pagina_ui, config.UI_OPCAO_VALOR_TOTAL)
+                        pass
+                    tipo_sel = escopo.get_by_label(config.UI_LABEL_TIPO)
+                    for lbl in [config.UI_OPCAO_VALOR_TOTAL, getattr(config, "UI_OPCAO_VALOR_TOTAL_ALT", "Valor Total")]:
+                        try:
+                            tipo_sel.select_option(label=lbl, timeout=2000)
+                            break
+                        except Exception:
+                            try:
+                                _clicar_por_texto(pagina_ui, lbl)
+                                break
+                            except Exception:
+                                pass
+                    if wait_fn:
+                        wait_fn(150)
                     try:
                         escopo.get_by_role("button", name=config.UI_BOTAO_SIMULAR).first.click(timeout=2000)
                     except Exception:
                         _clicar_por_texto(pagina_ui, config.UI_BOTAO_SIMULAR)
+                    if wait_fn:
+                        wait_fn(900)
                     try:
-                        escopo.get_by_text(config.UI_TEXTO_VALOR_LIBERADO, exact=False).first.wait_for(state="visible", timeout=4000)
+                        escopo.get_by_text(config.UI_TEXTO_VALOR_LIBERADO, exact=False).first.wait_for(state="visible", timeout=6000)
                     except Exception:
-                        pass
+                        try:
+                            escopo.get_by_text(getattr(config, "UI_TEXTO_VALOR_LIBERADO_ALT", "Liberado"), exact=False).first.wait_for(state="visible", timeout=3000)
+                        except Exception:
+                            pass
             except Exception:
                 pass
             sucesso = False
@@ -781,11 +827,14 @@ def simular_tabelas(
                 pass
             if tentou_valor_total and not sucesso:
                 linha_status = "valor_maior_que_disponivel"
-            if sucesso:
+            if sucesso or tentou_valor_total:
                 try:
                     bloco_liberado = escopo.get_by_text(config.UI_TEXTO_VALOR_LIBERADO, exact=False).first
                     txt_liberado = bloco_liberado.evaluate("el => el.closest('div')?.innerText || el.parentElement?.innerText || ''")
-                    m_li = re.search(r"R?\$?\s*([\d.,]+)", txt_liberado.replace(" ", ""))
+                    if not (txt_liberado and re.search(r"[\d.,]+", txt_liberado)):
+                        bloco_liberado = escopo.get_by_text(getattr(config, "UI_TEXTO_VALOR_LIBERADO_ALT", "Liberado"), exact=False).first
+                        txt_liberado = bloco_liberado.evaluate("el => el.closest('div')?.innerText || el.parentElement?.innerText || ''")
+                    m_li = re.search(r"R?\$?\s*([\d.,]+)", (txt_liberado or "").replace(" ", ""))
                     if m_li:
                         valor_liberado = m_li.group(1).replace(".", "").replace(",", ".")
                 except Exception:
@@ -793,42 +842,66 @@ def simular_tabelas(
                 try:
                     parcelas_el = escopo.get_by_text(config.UI_TEXTO_PARCELAS_X_RS, exact=False).first
                     txt_parc = parcelas_el.evaluate("el => el.closest('div')?.innerText || el.parentElement?.innerText || ''")
-                    m_parc = re.search(r"(\d+)\s*x\s*R?\$?\s*([\d.,]+)", txt_parc, re.IGNORECASE)
+                    m_parc = re.search(r"(\d+)\s*x\s*R?\$?\s*([\d.,]+)", (txt_parc or ""), re.IGNORECASE)
                     if m_parc:
-                        valor_parcela = m_parc.group(2).replace(".", "").replace(",", ".")
+                        valor_parcela = f"{m_parc.group(1)}x {m_parc.group(2).replace(',', '.')}"
+                        if not tentou_valor_total:
+                            qtd_parcelas = str(m_parc.group(1))
                 except Exception:
                     pass
                 try:
                     total_el = escopo.get_by_text(config.UI_TEXTO_TOTAL, exact=False).first
                     txt_tot = total_el.evaluate("el => el.closest('div')?.innerText || el.parentElement?.innerText || ''")
-                    m_tot = re.search(r"R?\$?\s*([\d.,]+)", txt_tot.replace(" ", ""))
+                    m_tot = re.search(r"R?\$?\s*([\d.,]+)", (txt_tot or "").replace(" ", ""))
                     if m_tot:
                         valor_total = m_tot.group(1).replace(".", "").replace(",", ".")
                 except Exception:
                     pass
-                linha_status = "sucesso"
+                if not valor_liberado or not valor_parcela or not valor_total:
+                    for fonte in [escopo, pagina_ui if pagina_ui is not escopo else None]:
+                        if fonte is None:
+                            continue
+                        try:
+                            txt_bloco = fonte.evaluate("el => el.innerText || ''")
+                            if not valor_liberado and txt_bloco:
+                                m = re.search(r"[Ll]iberado\s*[:\s]*R?\$?\s*([\d.,]+)", txt_bloco)
+                                if m:
+                                    valor_liberado = m.group(1).replace(".", "").replace(",", ".")
+                            if not valor_parcela and txt_bloco:
+                                m = re.search(r"(\d+)\s*x\s*R?\$?\s*([\d.,]+)", txt_bloco, re.IGNORECASE)
+                                if m:
+                                    valor_parcela = f"{m.group(1)}x {m.group(2).replace(',', '.')}"
+                                    if not tentou_valor_total:
+                                        qtd_parcelas = str(m.group(1))
+                            if not valor_total and txt_bloco:
+                                m = re.search(r"[Tt]otal\s*[:\s]*R?\$?\s*([\d.,]+)", txt_bloco)
+                                if m:
+                                    valor_total = m.group(1).replace(".", "").replace(",", ".")
+                            if valor_liberado and valor_parcela and valor_total:
+                                break
+                        except Exception:
+                            pass
+                if not tentou_valor_total:
+                    linha_status = "sucesso"
         except Exception as e:
             erro_linha = str(e).replace("\n", " ").replace("\r", "")[:500]
-        valor_min = getattr(config, "VALOR_MINIMO_PARCELA_SIMULAR", None)
-        gravar_linha = True
-        if linha_status == "valor_maior_que_disponivel":
-            gravar_linha = True
-        elif valor_min is not None and valor_min > 0:
-            try:
-                vp = float(valor_parcela) if valor_parcela else 0.0
-                vl = float(valor_liberado) if valor_liberado else 0.0
-                gravar_linha = vp >= valor_min or vl >= valor_min
-            except Exception:
-                pass
-        if gravar_linha:
+        skip_parcela = linha_status == "falha_simulacao" and not valor_liberado and not valor_parcela and not valor_total and not erro_linha
+        if not skip_parcela:
+            valor_esperado_str = str(valor_maximo_parcela if valor_maximo_parcela is not None else "")
             lista_saida.append({
                 "nome": cliente.nome, "cpf": cliente.cpf, "contato": cliente.contato, "email": cliente.email,
-                "banco": banco_atual, "valor_maximo_parcela": valor_maximo_parcela, "qtd_parcelas": qtd_parcelas,
-                "valor_liberado": valor_liberado, "valor_parcela": valor_parcela, "valor_total": valor_total,
+                "banco": banco_atual, "valor_maximo_parcela": valor_maximo_parcela, "valor_esperado": valor_esperado_str,
+                "qtd_parcelas": qtd_parcelas, "valor_liberado": valor_liberado, "valor_parcela": valor_parcela, "valor_total": valor_total,
                 "status": linha_status, "erro": erro_linha, "tipo": "parcela",
             })
             gravou_alguma = True
-    return gravou_alguma
+    limite_msg = getattr(config, "UI_TEXTO_LIMITE_OPCOES_MESES", "Limite de opções de meses alcançado")
+    lista_saida.append({
+        "nome": cliente.nome, "cpf": cliente.cpf, "contato": cliente.contato, "email": cliente.email,
+        "banco": banco_atual, "valor_esperado": "", "valor_liberado": "", "valor_parcela": "", "qtd_parcelas": "", "valor_maximo_parcela": "", "valor_total": "",
+        "status": limite_msg, "erro": "", "tipo": "limite_meses",
+    })
+    return (gravou_alguma, alguma_vez_opcao_clicada)
 
 
 def processar_resultado_existente_no_historico(page: "Page", cpf_site: str, banco_atual: str, cliente: Cliente, lista_saida: list, timeout_ms: int) -> bool:
