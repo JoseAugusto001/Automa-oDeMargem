@@ -7,6 +7,7 @@ import credenciais
 
 
 def login_e_ir_para_consulta(page: Page) -> None:
+    credenciais.exigir_credenciais()
     page.goto(config.URL_ADMIN_BASE, wait_until="domcontentloaded")
     campo_email = page.get_by_label(config.UI_LABEL_EMAIL).or_(page.locator("input[type='email']").first)
     campo_email.wait_for(state="visible", timeout=config.TIMEOUT_LOGIN_FORM_MS)

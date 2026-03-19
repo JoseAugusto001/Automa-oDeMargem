@@ -600,19 +600,19 @@ def processar_clientes(page: Page, clientes: Iterable[Cliente], caminho_saida: s
                     try:
                         resultado_termo = _preencher_e_submeter_termo(aba_termo, page, cpf_site, cliente)
                         if resultado_termo == "termo_em_processamento":
-                            csv_io.log_critico(lista_saida, cliente, banco_atual, "termo_em_processamento", "Termo em processamento; aguardado tempo máximo")
+                            csv_io.log_critico(lista_saida, cliente, banco_atual, "aguardar_formulario_autorizacao", "Aguardar formulário de autorização")
                             navegacao.fechar_pagina_se_aberta(aba_termo)
                             page.bring_to_front()
                             navegacao.voltar_para_consulta_limpa(page)
                             continue
                         if resultado_termo == "falha_btn_enviar":
-                            csv_io.log_critico(lista_saida, cliente, banco_atual, "falha_termo_autorizacao", "Botão ENVIAR não apareceu a tempo")
+                            csv_io.log_critico(lista_saida, cliente, banco_atual, "aguardar_formulario_autorizacao", "Aguardar formulário de autorização")
                             navegacao.fechar_pagina_se_aberta(aba_termo)
                             page.bring_to_front()
                             navegacao.voltar_para_consulta_limpa(page)
                             continue
                         if resultado_termo == "termo_em_processamento_apos_envio":
-                            csv_io.log_critico(lista_saida, cliente, banco_atual, "termo_em_processamento", "Termo em processamento após envio; aguardado tempo máximo")
+                            csv_io.log_critico(lista_saida, cliente, banco_atual, "aguardar_formulario_autorizacao", "Aguardar formulário de autorização")
                             navegacao.fechar_pagina_se_aberta(aba_termo)
                             page.bring_to_front()
                             navegacao.voltar_para_consulta_limpa(page)
@@ -635,6 +635,27 @@ def processar_clientes(page: Page, clientes: Iterable[Cliente], caminho_saida: s
                             pass
                         page.wait_for_timeout(config.PAUSA_APOS_CONSULTAR_MS)
                         page.wait_for_timeout(500)
+                        textos_modal_retry = getattr(config, "UI_TEXTO_MODAL_AUTORIZACAO_CELCOIN", [config.UI_TEXTO_MODAL_AUTORIZACAO]) if (banco_atual and "celcoin" in banco_atual.lower()) else [config.UI_TEXTO_MODAL_AUTORIZACAO]
+                        if isinstance(textos_modal_retry, str):
+                            textos_modal_retry = [textos_modal_retry]
+                        aguardando_autorizacao = False
+                        for txt in textos_modal_retry:
+                            try:
+                                if page.get_by_text(txt, exact=False).first.is_visible():
+                                    aguardando_autorizacao = True
+                                    break
+                            except Exception:
+                                pass
+                        if not aguardando_autorizacao:
+                            try:
+                                if termo.extrair_link_termo_pagina(page):
+                                    aguardando_autorizacao = True
+                            except Exception:
+                                pass
+                        if aguardando_autorizacao:
+                            csv_io.log_critico(lista_saida, cliente, banco_atual, "aguardar_formulario_autorizacao", "Aguardar formulário de autorização")
+                            navegacao.voltar_para_consulta_limpa(page)
+                            continue
                     except TermoRequisicaoMalFormatada:
                         check_historico_apos_erro = True
                     except Exception as e_termo:
@@ -649,9 +670,9 @@ def processar_clientes(page: Page, clientes: Iterable[Cliente], caminho_saida: s
                             except Exception:
                                 pass
                         if termo_processamento_visivel:
-                            csv_io.log_critico(lista_saida, cliente, banco_atual, "termo_em_processamento", "Termo em processamento após envio; aguardado tempo máximo")
+                            csv_io.log_critico(lista_saida, cliente, banco_atual, "aguardar_formulario_autorizacao", "Aguardar formulário de autorização")
                         elif is_timeout:
-                            csv_io.log_critico(lista_saida, cliente, banco_atual, "falha_termo_autorizacao", "Confirmação do termo não obtida no tempo esperado")
+                            csv_io.log_critico(lista_saida, cliente, banco_atual, "aguardar_formulario_autorizacao", "Aguardar formulário de autorização")
                         else:
                             csv_io.log_critico(lista_saida, cliente, banco_atual, "falha_termo_autorizacao", f"Termo ({passo_termo}): {tipo_termo}: {msg_termo}")
                         navegacao.fechar_pagina_se_aberta(aba_termo)
@@ -917,4 +938,3 @@ def processar_clientes(page: Page, clientes: Iterable[Cliente], caminho_saida: s
                 pass
         navegacao.voltar_para_consulta_limpa(page)
     csv_io.salvar_dataframe_final(caminho_saida, lista_saida)
-

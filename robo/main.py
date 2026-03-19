@@ -5,7 +5,7 @@ import config
 from robo.ativos.executor import executar_robo
 
 
-if __name__ == "__main__":
+def main() -> None:
     parser = argparse.ArgumentParser(description="Robô Consulta Margem Banco Prata")
     parser.add_argument("--headless", action="store_true", help="Executar browser em modo headless")
     default_entrada = os.path.join(config.DIR_ENTRADA_PADRAO, config.ARQUIVO_ENTRADA_PADRAO)
@@ -14,3 +14,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     headless = args.headless or os.environ.get("ROBO_HEADLESS", "").strip().lower() in ("1", "true", "yes")
     executar_robo(caminho_entrada=args.entrada, dir_saida=args.saida, headless=headless)
+
+
+if __name__ == "__main__":
+    main()
