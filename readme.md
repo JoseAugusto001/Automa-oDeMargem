@@ -1,8 +1,17 @@
-<<<<<<< HEAD
-# RoboPrata – Consulta Margem CLT
+# RoboPrata — Consulta Margem CLT
 
+Automação para consulta de margem e simulações (QiTech / Celcoin) no fluxo CLT do Banco Prata.
 
-=======
-"# Automa-oDeMargem" 
-"# Automa-oDeMargem" 
->>>>>>> ee31b9adf32498884f6a7161fa1d9c34b21d4d05
+## Documentação completa
+
+Consulte **[DOCUMENTACAO.md](DOCUMENTACAO.md)** para:
+
+- como executar (`python main.py`, flags e variáveis de ambiente);
+- credenciais (`.env`);
+- fluxo geral e links para READMEs por pasta (`robo/ativos`, `robo/comms`, `robo/passivos`).
+
+## Início rápido
+
+1. Configure `ADMIN_EMAIL` e `ADMIN_SENHA` no `.env`.  
+2. Coloque clientes em `robo/entrada/clientes.csv`.  
+3. Execute: `python main.py`
