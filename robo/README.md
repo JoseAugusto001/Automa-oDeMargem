@@ -33,6 +33,14 @@ Carrega `ADMIN_EMAIL` e `ADMIN_SENHA` do ambiente (`.env` via `load_dotenv`). O 
 
 CLI semelhante ao `main.py` da raiz: argumentos `--entrada`, `--saida`, `--headless` e uso de `ROBO_HEADLESS`. Pode ser executado como módulo/script se o `PYTHONPATH` incluir o projeto.
 
+## Variáveis de ambiente
+
+| Variável | Impacto |
+|----------|---------|
+| `ROBO_HEADLESS` | Se `1`, `true` ou `yes`, equivale a `--headless` (executa sem janela). |
+| `ROBO_DEBUG` | Habilita logs extras durante o fluxo (termo/simulações). |
+| `ROBO_DEBUG_TABELA` | Detalha abertura/seleção da tabela de simulação. |
+
 ## `__init__.py`
 
 Reexporta `Cliente`, `TermoRequisicaoMalFormatada` e `executar_robo` para importações curtas do pacote.

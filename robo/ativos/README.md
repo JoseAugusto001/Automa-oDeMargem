@@ -21,7 +21,7 @@ Coração do fluxo de negócio:
   - Pode reutilizar resultado já existente no histórico (`historico.processar_resultado_existente_no_historico`).  
   - Aguarda status da linha no histórico, abre **Ver resultado** quando há sucesso.  
   - Trata **modal de autorização**, preenchimento de nome/telefone e fluxo do **termo** em nova aba (`termo`).  
-  - Extrai valor máximo da parcela e chama `historico.simular_tabelas` para cada combinação de prazos (6/12/24/36 para QiTech; 6/12/18/24 para Celcoin).  
+  - Extrai valor máximo da parcela e chama `historico.simular_tabelas` para cada combinação de prazos (6/12/18/24).  
 - Registra erros com `csv_io.log_critico` e, ao final, `csv_io.salvar_dataframe_final`.
 
 Função principal: `processar_clientes(page, clientes, caminho_saida)`.

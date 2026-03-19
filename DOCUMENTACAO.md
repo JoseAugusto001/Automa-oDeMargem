@@ -11,6 +11,20 @@ Automação de **consulta de margem CLT** no ecossistema Banco Prata (admin + fl
 | [robo/comms/README.md](robo/comms/README.md) | Interação com a UI (login, consulta, histórico, termo) |
 | [robo/passivos/README.md](robo/passivos/README.md) | Modelos, CSV de entrada/saída e utilitários |
 
+## Pré-requisitos
+
+- Python 3.10+  
+- Acesso ao admin do Banco Prata
+
+## Instalação
+
+Na raiz do repositório:
+
+```bash
+pip install -r requirements.txt
+python -m playwright install chromium
+```
+
 ## Como executar
 
 Na raiz do repositório (recomendado):
@@ -27,13 +41,23 @@ Argumentos opcionais:
 | `--saida` | Pasta onde será gravado o CSV de resultado (padrão: `robo/saida/`) |
 | `--headless` | Executa o Chromium sem janela visível |
 
-Variável de ambiente:
+## Variáveis de ambiente
 
-- `ROBO_HEADLESS` — se `1`, `true` ou `yes`, equivale a `--headless`.
+| Variável | Impacto |
+|----------|---------|
+| `ROBO_HEADLESS` | Se `1`, `true` ou `yes`, equivale a `--headless` (executa sem janela). |
+| `ROBO_DEBUG` | Habilita logs extras durante o fluxo (termo/simulações). |
+| `ROBO_DEBUG_TABELA` | Detalha abertura/seleção da tabela de simulação. |
+
+Execução alternativa (com o pacote no `PYTHONPATH`):
+
+```bash
+python -m robo.main
+```
 
 ## Credenciais
 
-Não commite senhas. Use arquivo `.env` na raiz com:
+Não commite senhas. Use arquivo `.env` na raiz (baseie-se em `.env.example`) com:
 
 - `ADMIN_EMAIL` — e-mail do usuário admin  
 - `ADMIN_SENHA` — senha  
@@ -79,12 +103,18 @@ flowchart LR
 ## Pastas de dados
 
 - `robo/entrada/` — CSV de entrada (ex.: `clientes.csv` com colunas `nome`, `cpf`; opcionais `contato`, `email`).  
-- `robo/saida/` — CSV gerados automaticamente; não versionar dados sensíveis.
+- `robo/saida/` — CSV gerados automaticamente; não versionar dados sensíveis (considere adicionar essas pastas ao `.gitignore`).
 
-## Dependências
+## Segurança e dados sensíveis
 
-- Python 3 com **Playwright** (Chromium), **pandas**, **python-dotenv**.  
-- Instalar browsers do Playwright conforme a documentação oficial do projeto (`playwright install`).
+- Não versione `robo/entrada/` e `robo/saida/`: esses arquivos podem conter dados pessoais.  
+- Não versione `.env` e `credenciais.py`.  
+- Armazene resultados com acesso controlado e apague arquivos antigos quando possível.
+
+## Saída (CSV)
+
+- Arquivo `resultado_YYYYMMDD_HHMMSS.csv` dentro de `robo/saida/`.  
+- Separador `;` e encoding UTF-8.  
 
 ---
 
