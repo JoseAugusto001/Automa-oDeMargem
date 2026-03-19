@@ -9,3 +9,4 @@ myvenv/
 env/
 *.log
 credenciais.py
+entrada/
